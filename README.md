@@ -1,22 +1,36 @@
-# Volc Agent Launchpad
+# Agent Black Box
 
-A minimal Agent platform for three-day middleware hackathons. It provides Agent
-CRUD, a browser Playground, persistent workspaces, and Codex CLI backed by the
-Volcengine Ark Responses API.
+**Every Agent Run tells the truth.** Agent Black Box is lightweight middleware
+that turns the observable path of a Run into a correlated, redacted timeline.
+Operators can see control-plane lifecycle, Runtime boundaries, command and file
+evidence, model usage, and the most specific failure boundary the platform can
+honestly support.
 
-Run it locally with Docker, Colima, or rootless Podman, or deploy it to
-Volcengine ECS.
+The project extends the TikTok TechJam 2026 Track 1 starter without replacing
+its Agent CRUD, Playground, persistent workspaces, resumable sessions, JSON
+store, disposable Runtime containers, or ModelArk integration.
 
 > [!WARNING]
-> This is a single-user proof of concept. It intentionally has no identity,
-> tracing, audit, or hardened sandbox middleware. Do not use production data or
-> credentials. See [SECURITY.md](SECURITY.md).
+> This remains a single-user hackathon proof of concept. Trace capture is
+> intentionally allowlisted and incomplete, and ordinary containers are not a
+> hardened multi-tenant boundary. Use only scoped demo credentials and data.
+
+## What the middleware proves
+
+- A real frontend-to-control-plane-to-Runtime path produces ordered evidence.
+- JSONL events are mapped using the pinned Runtime protocol rather than inferred.
+- Reasoning and raw command output are never added to the trace store.
+- Trace strings and failure messages are bounded and centrally redacted.
+- A controlled process/container failure traverses the same Runner, parser,
+  persistence, API, and UI path as normal execution.
+- Restart-interrupted Runs remain `cancelled` and gain truthful
+  `server_restart` evidence.
 
 ## Screenshots
 
-### Agent Playground
+### Agent Black Box timeline
 
-![Agent Playground showing lifecycle controls, starter prompts, and the Codex Runtime](docs/assets/playground.jpg)
+![Agent Black Box showing a redacted failure boundary and ordered Runtime timeline](docs/assets/agent-black-box.png)
 
 ### Create an Agent
 
@@ -27,6 +41,11 @@ Volcengine ECS.
 - React and TypeScript Web UI
 - Agent create, edit, start, stop, delete, and multi-turn chat
 - Fastify control plane with asynchronous Run state
+- Correlated per-Run timeline with deterministic sequence numbers
+- Command, file-change, duration, usage, and terminal evidence
+- Central trace redaction, typed metadata, deduplication, and bounded storage
+- Run history with failure-boundary highlighting
+- Reproducible controlled Runtime failure proof
 - Persistent Agent workspaces and Codex sessions
 - Disposable Docker, Colima, or Podman container for each local turn
 - Docker and Terraform deployment paths for Volcengine ECS
@@ -97,7 +116,20 @@ In the Web UI:
    ```
 
 The Agent can write files, run commands, and continue the same Codex session in
-later messages.
+later messages. The **Agent Black Box** panel updates while the Run is active
+and keeps previous Runs inspectable.
+
+### Run the controlled failure proof
+
+1. Create or select an Agent.
+2. Select **Run controlled failure proof** in the Black Box panel.
+3. Inspect the ten-event failure chain from queueing through the terminal Run.
+4. Confirm the explicit canary is displayed only as `[REDACTED]`.
+
+The fixture is labelled as injected evidence. It emits the pinned JSONL shape
+from a real child process or disposable Runtime container and exits with code
+17. It does not call ModelArk, execute an external write, or receive the Ark
+credential.
 
 ### 5. Stop and resume
 
@@ -214,17 +246,76 @@ See [.env.example](.env.example) for all Runtime and resource-limit options.
 
 ```mermaid
 flowchart LR
-    UI["React Web UI"] --> API["Fastify control plane"]
-    API --> Store["JSON metadata and Agent workspaces"]
-    API --> Runtime{"Runtime provider"}
-    Runtime -->|Local POC| Container["Disposable Docker / Colima / Podman container"]
-    Runtime -->|ECS profile| Codex["Codex CLI in application container"]
-    Container --> Ark["Volcengine Ark Responses API"]
-    Codex --> Ark
+    UI["React Playground + Black Box timeline"] <--> API["Fastify API"]
+    API <--> Service["AgentService"]
+    Service --> Runner{"AgentRunner"}
+    Runner -->|normal| Codex["Pinned Codex CLI Runtime"]
+    Runner -->|controlled proof| Fixture["Credential-free failure process"]
+    Codex --> Ark["ModelArk Responses API"]
+    Codex -- JSONL --> Adapter["Allowlisted event adapter"]
+    Fixture -- JSONL --> Adapter
+    Adapter --> Redactor["Bounds + central redaction"]
+    Redactor --> Recorder["Sequence + dedupe + append"]
+    Recorder --> Store["Atomic JSON store"]
+    Store --> API
 ```
 
-The first turn uses `codex exec`; later turns resume the stored Codex thread.
-Deleting an Agent archives its workspace under `workspaces/.deleted/`.
+The first turn uses `codex exec`; later turns resume the stored thread. Trace
+events use the Run ID as the trace ID. The adapter records observable events,
+not hidden reasoning. Deleting an Agent archives its workspace and removes its
+Run metadata and traces.
+
+See [Agent Black Box architecture and contracts](docs/AGENT_BLACK_BOX.md) for
+the trust boundary, event contract, redaction scope, and failure model.
+
+## Trace API
+
+```text
+GET  /api/runs/:id/trace
+POST /api/agents/:id/demo-runs  { "fixture": "runtime_nonzero" }
+```
+
+Trace responses contain typed, sanitized events only. There is no raw JSONL,
+prompt, final model response, stderr, environment object, or request header in
+the trace payload.
+
+## Evaluation evidence
+
+| Track 1 category | Evidence |
+| --- | --- |
+| End-to-end behaviour (40%) | Live Playground Run plus controlled failure through the real backend/Runtime path and timeline UI. |
+| Design and integration (25%) | Shared Runner adapter, server-owned recorder/redactor, additive version-1 storage compatibility, no replacement platform. |
+| Verification and robustness (20%) | Parser, redaction, sequence, cap, historical data, restart, API, concurrency, and fixture tests. |
+| Demo and reproducibility (15%) | One-command local POC, fixed failure proof, Run history, architecture diagram, and documented three-minute path. |
+
+## Three-minute walkthrough
+
+1. **0:00-0:15** - Explain why a terminal `failed` status is insufficient.
+2. **0:15-0:30** - Show the architecture and truthful evidence boundary.
+3. **0:30-1:15** - Run a real task and show commands, file changes, duration,
+   usage, and completion.
+4. **1:15-2:05** - Trigger the controlled failure and show the causal chain,
+   exit code, failure boundary, and redacted canary.
+5. **2:05-2:40** - Switch between Run histories and inspect sanitized details.
+6. **2:40-3:00** - Show the green validation gate and known limitations.
+
+## Known limitations
+
+- Single-user, single-process JSON-store architecture.
+- Trace capture is allowlisted rather than complete by design.
+- Existing Playground prompts and final messages are outside the new
+  trace-redaction guarantee.
+- Command output is deliberately omitted, so some failures resolve only to the
+  command or Runtime boundary.
+- Ordinary containers are not hardened tenant isolation.
+- Local disposable containers are the supported judging path; ECS is optional.
+- A controlled failure proves middleware behaviour but is not represented as a
+  real provider outage.
+
+## Team contribution
+
+This is a solo submission. Design, implementation, testing, documentation, and
+the demonstration are owned by the submitting participant.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for component and extension
 boundaries.
@@ -234,12 +325,14 @@ boundaries.
 ```bash
 npm run check
 terraform fmt -check -recursive deploy/volcengine
-docker compose config
+LAUNCHPAD_ENV_FILE=.env.example docker compose --env-file .env.example config
+npm audit --omit=dev
 ```
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Agent Black Box design](docs/AGENT_BLACK_BOX.md)
 - [Local POC](docs/LOCAL_POC.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [Hackathon extension guide](docs/HACKATHON_EXTENSION_GUIDE.md)
