@@ -70,7 +70,10 @@ function TracePanel({
     (total, event) => total + (event.metadata?.redactionCount ?? 0),
     0,
   );
-  const failure = events.find((event) => event.status === "failed");
+  const firstFailure = events.find((event) => event.status === "failed");
+  const boundaryFailure =
+    events.find((event) => event.type === "runtime.failed") ??
+    [...events].reverse().find((event) => event.status === "failed");
 
   return (
     <aside className="trace-panel" aria-label="Agent Black Box trace">
@@ -119,7 +122,10 @@ function TracePanel({
         <div className="trace-failure-card" role="status">
           <span>Failure boundary</span>
           <strong>{selectedRun.failureCode.replaceAll("_", " ")}</strong>
-          <p>{failure?.summary ?? selectedRun.error ?? "The Runtime reported a failure."}</p>
+          <p>{boundaryFailure?.summary ?? selectedRun.error ?? "The Runtime reported a failure."}</p>
+          {firstFailure && firstFailure.id !== boundaryFailure?.id ? (
+            <small>First failed step: {firstFailure.summary}</small>
+          ) : null}
         </div>
       )}
 

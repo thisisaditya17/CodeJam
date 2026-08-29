@@ -459,7 +459,9 @@ export class CodexRunner implements AgentRunner {
     }
   }
 
-  private childEnvironment(executionMode: RunnerRequest["executionMode"] = "codex"): NodeJS.ProcessEnv {
+  private childEnvironment(
+    executionMode: RunnerRequest["executionMode"] = "demo_runtime_failure",
+  ): NodeJS.ProcessEnv {
     const inheritedNames = [
       "PATH",
       "HOME",

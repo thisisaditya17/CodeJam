@@ -145,7 +145,7 @@ export class ContainerCodexRunner implements AgentRunner {
       buildContainerRunArgs(request, this.config),
       {
         cwd: request.workspacePath,
-        env: this.childEnvironment(),
+        env: this.childEnvironment(request.executionMode),
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
@@ -248,7 +248,9 @@ export class ContainerCodexRunner implements AgentRunner {
     }
   }
 
-  private childEnvironment(executionMode: RunnerRequest["executionMode"] = "codex"): NodeJS.ProcessEnv {
+  private childEnvironment(
+    executionMode: RunnerRequest["executionMode"] = "demo_runtime_failure",
+  ): NodeJS.ProcessEnv {
     const environment: NodeJS.ProcessEnv = { NO_COLOR: "1" };
     if (executionMode === "codex") environment.ARK_API_KEY = this.config.arkApiKey;
     for (const name of [

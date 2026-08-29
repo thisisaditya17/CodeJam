@@ -174,4 +174,19 @@ describe("Codex runner protocol", () => {
     expect(command.args.at(-1)).toMatch(/demo-runtime-failure\.mjs$/);
     expect(command.args).not.toContain("real-secret");
   });
+
+  it("ignores malformed and unknown JSONL without creating trace evidence", () => {
+    const traces: TraceDraft[] = [];
+    const parsed = {
+      messages: [] as string[],
+      threadId: null as string | null,
+      usage: null,
+      errors: [] as string[],
+      onTrace: (trace: TraceDraft) => traces.push(trace),
+    };
+    parseCodexEventLine("{not-json", parsed);
+    parseCodexEventLine(JSON.stringify({ type: "future.event", raw: "must not persist" }), parsed);
+    expect(traces).toEqual([]);
+    expect(parsed.errors).toEqual([]);
+  });
 });
