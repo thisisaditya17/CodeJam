@@ -29,4 +29,7 @@ ENV NO_COLOR=1
 
 WORKDIR /workspace
 
+COPY scripts/demo-runtime-failure.mjs /opt/agent-black-box/demo-runtime-failure.mjs
+COPY scripts/demo-runtime-success.mjs /opt/agent-black-box/demo-runtime-success.mjs
+
 CMD ["codex", "--version"]

@@ -24,6 +24,7 @@ describe("Container Codex runner", () => {
         workspacePath: "/tmp/agent-workspace",
         prompt: "write a small program",
         threadId: null,
+        executionMode: "codex",
       },
       config,
     );
@@ -54,10 +55,65 @@ describe("Container Codex runner", () => {
         workspacePath: "/tmp/workspace",
         prompt: "continue",
         threadId: "thread-123",
+        executionMode: "codex",
       },
       config,
     );
     expect(args.slice(-3)).toEqual(["resume", "thread-123", "continue"]);
     expect(args).not.toContain("keep-id");
+  });
+
+  it("runs the controlled failure fixture without forwarding the Ark credential", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      ARK_API_KEY: "must-not-be-forwarded",
+      ARK_MODEL: "ep-test",
+      CODEX_HOME: "/tmp/codex-home",
+      RUNTIME_PROVIDER: "container",
+      CONTAINER_RUNTIME_IMAGE: "runtime:test",
+    });
+    const args = buildContainerRunArgs(
+      {
+        agentId: "agent",
+        workspacePath: "/tmp/workspace",
+        prompt: "controlled failure",
+        threadId: null,
+        executionMode: "demo_runtime_failure",
+      },
+      config,
+    );
+    expect(args.slice(-2)).toEqual([
+      "node",
+      "/opt/agent-black-box/demo-runtime-failure.mjs",
+    ]);
+    expect(args).not.toContain("ARK_API_KEY");
+    expect(args).not.toContain("must-not-be-forwarded");
+  });
+
+  it("runs the credential-free success fixture without forwarding the Ark credential", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      ARK_API_KEY: "must-not-be-forwarded",
+      ARK_MODEL: "ep-test",
+      CODEX_HOME: "/tmp/codex-home",
+      RUNTIME_PROVIDER: "container",
+      CONTAINER_RUNTIME_IMAGE: "runtime:test",
+    });
+    const args = buildContainerRunArgs(
+      {
+        agentId: "agent",
+        workspacePath: "/tmp/workspace",
+        prompt: "workspace proof",
+        threadId: null,
+        executionMode: "demo_runtime_success",
+      },
+      config,
+    );
+    expect(args.slice(-2)).toEqual([
+      "node",
+      "/opt/agent-black-box/demo-runtime-success.mjs",
+    ]);
+    expect(args).not.toContain("ARK_API_KEY");
+    expect(args).not.toContain("must-not-be-forwarded");
   });
 });

@@ -45,4 +45,62 @@ describe("HTTP boundary", () => {
     expect(oversized.statusCode).toBe(413);
     await app.close();
   });
+
+  it("exposes validated trace and controlled-failure routes", async () => {
+    const runId = "11111111-1111-4111-8111-111111111111";
+    const agentId = "22222222-2222-4222-8222-222222222222";
+    const boundaryService = {
+      ...service,
+      getTrace: (id: string) => ({
+        traceId: id,
+        runId: id,
+        agentId,
+        events: [],
+      }),
+      startDemoRun: async (id: string) => ({ run: { id: runId, agentId: id } }),
+      retryRun: async () => ({ run: { id: runId, agentId } }),
+    } as unknown as AgentService;
+    const app = await createApp(loadConfig({ NODE_ENV: "test" }), boundaryService);
+
+    const trace = await app.inject({ method: "GET", url: "/api/runs/" + runId + "/trace" });
+    expect(trace.statusCode).toBe(200);
+    expect(trace.json()).toMatchObject({ traceId: runId, agentId });
+
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/api/agents/" + agentId + "/demo-runs",
+      payload: { fixture: "arbitrary-command" },
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/api/agents/" + agentId + "/demo-runs",
+      payload: { fixture: "runtime_nonzero" },
+    });
+    expect(accepted.statusCode).toBe(202);
+    expect(accepted.json()).toMatchObject({ run: { id: runId, agentId } });
+
+    const success = await app.inject({
+      method: "POST",
+      url: "/api/agents/" + agentId + "/demo-runs",
+      payload: { fixture: "runtime_success" },
+    });
+    expect(success.statusCode).toBe(202);
+
+    const invalidRetry = await app.inject({
+      method: "POST",
+      url: "/api/runs/" + runId + "/retries",
+      payload: { idempotencyKey: "not-a-uuid" },
+    });
+    expect(invalidRetry.statusCode).toBe(400);
+
+    const retry = await app.inject({
+      method: "POST",
+      url: "/api/runs/" + runId + "/retries",
+      payload: { idempotencyKey: "66666666-6666-4666-8666-666666666666" },
+    });
+    expect(retry.statusCode).toBe(202);
+    await app.close();
+  });
 });

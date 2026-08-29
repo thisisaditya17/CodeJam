@@ -22,6 +22,10 @@ const updateAgentBody = createAgentBody.partial().refine(
 const messageBody = z.object({
   content: z.string().trim().min(1).max(50_000),
 });
+const demoRunBody = z.object({
+  fixture: z.enum(["runtime_nonzero", "runtime_success"]),
+});
+const retryRunBody = z.object({ idempotencyKey: z.string().uuid() });
 
 export async function createApp(
   config: AppConfig,
@@ -123,9 +127,28 @@ export async function createApp(
     return reply.code(202).send(result);
   });
 
+  app.post("/api/agents/:id/demo-runs", async (request, reply) => {
+    const { id } = agentIdParams.parse(request.params);
+    const body = demoRunBody.parse(request.body);
+    const result = await service.startDemoRun(id, body.fixture);
+    return reply.code(202).send(result);
+  });
+
   app.get("/api/runs/:id", async (request) => {
     const { id } = runIdParams.parse(request.params);
     return { run: service.getRun(id) };
+  });
+
+  app.get("/api/runs/:id/trace", async (request) => {
+    const { id } = runIdParams.parse(request.params);
+    return service.getTrace(id);
+  });
+
+  app.post("/api/runs/:id/retries", async (request, reply) => {
+    const { id } = runIdParams.parse(request.params);
+    const body = retryRunBody.parse(request.body);
+    const result = await service.retryRun(id, body.idempotencyKey);
+    return reply.code(202).send(result);
   });
 
   if (config.nodeEnv === "production") {

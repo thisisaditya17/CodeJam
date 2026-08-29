@@ -1,13 +1,29 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Database } from "./types.js";
+import type { AgentRun, Database } from "./types.js";
 
 const emptyDatabase = (): Database => ({
   version: 1,
   agents: [],
   messages: [],
   runs: [],
+  traceEvents: [],
 });
+
+function normalizeRun(run: AgentRun): AgentRun {
+  return {
+    ...run,
+    failureCode: run.failureCode ?? null,
+    threadIdAtStart: run.threadIdAtStart ?? null,
+    retryOfRunId: run.retryOfRunId ?? null,
+    rootRunId: run.rootRunId ?? run.id,
+    attemptNumber: run.attemptNumber ?? 1,
+    recoveryMode: run.recoveryMode ?? "none",
+    retryRequestKey: run.retryRequestKey ?? null,
+    recoveryInstruction: run.recoveryInstruction ?? null,
+    executionMode: run.executionMode ?? "codex",
+  };
+}
 
 export class JsonStore {
   private data: Database = emptyDatabase();
@@ -20,10 +36,19 @@ export class JsonStore {
     try {
       const raw = await readFile(this.filePath, "utf8");
       const parsed = JSON.parse(raw) as Database;
-      if (parsed.version !== 1 || !Array.isArray(parsed.agents)) {
+      if (
+        parsed.version !== 1 ||
+        !Array.isArray(parsed.agents) ||
+        !Array.isArray(parsed.messages) ||
+        !Array.isArray(parsed.runs)
+      ) {
         throw new Error("Unsupported database format");
       }
-      this.data = parsed;
+      this.data = {
+        ...parsed,
+        runs: parsed.runs.map(normalizeRun),
+        traceEvents: Array.isArray(parsed.traceEvents) ? parsed.traceEvents : [],
+      };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;

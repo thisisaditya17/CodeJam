@@ -36,6 +36,8 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/server/package.json ./apps/server/package.json
 COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/apps/web/dist ./apps/web/dist
+COPY scripts/demo-runtime-failure.mjs ./scripts/demo-runtime-failure.mjs
+COPY scripts/demo-runtime-success.mjs ./scripts/demo-runtime-success.mjs
 
 RUN mkdir -p /app/data /app/workspaces /app/codex-home \
     && chown -R node:node /app
