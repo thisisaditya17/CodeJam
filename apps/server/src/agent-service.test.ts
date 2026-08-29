@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentService } from "./agent-service.js";
 import { loadConfig } from "./config.js";
-import { RunExecutionError } from "./errors.js";
+import { RunCancelledError, RunExecutionError } from "./errors.js";
 import { JsonStore } from "./store.js";
 import type { AgentRunner, RunnerRequest, RunnerResult } from "./types.js";
 import { WorkspaceManager } from "./workspace.js";
@@ -209,6 +209,54 @@ describe("Agent lifecycle", () => {
       type: "run.interrupted",
       metadata: { failureCode: "server_restart" },
     });
+  });
+
+  it.each([
+    ["timeout", "Runtime timed out after 1000 ms"],
+    ["output_limit", "Runtime output exceeded its configured limit"],
+    ["spawn_error", "Runtime failed to start"],
+  ] as const)("preserves the typed %s failure boundary", async (failureCode, message) => {
+    const service = await makeService({
+      run: async () => {
+        throw new RunExecutionError(failureCode, message);
+      },
+      cancel: async () => false,
+      isAvailable: async () => true,
+    });
+    const agent = await service.createAgent({ name: "Typed failure" });
+    const { run } = await service.sendMessage(agent.id, "exercise failure handling");
+    await expect.poll(() => service.getRun(run.id).status).toBe("failed");
+    expect(service.getRun(run.id).failureCode).toBe(failureCode);
+    expect(service.getTrace(run.id).events.at(-2)).toMatchObject({
+      type: "runtime.failed",
+      metadata: { failureCode },
+    });
+  });
+
+  it("records cancellation distinctly and leaves the Agent controllable", async () => {
+    let rejectRun!: (error: Error) => void;
+    const pending = new Promise<RunnerResult>((_resolve, reject) => {
+      rejectRun = reject;
+    });
+    const service = await makeService({
+      run: async () => pending,
+      cancel: async () => {
+        rejectRun(new RunCancelledError());
+        return true;
+      },
+      isAvailable: async () => true,
+    });
+    const agent = await service.createAgent({ name: "Cancellable" });
+    const { run } = await service.sendMessage(agent.id, "wait for cancellation");
+    await expect.poll(() => service.getRun(run.id).status).toBe("running");
+    await service.stopAgent(agent.id);
+
+    expect(service.getRun(run.id)).toMatchObject({
+      status: "cancelled",
+      failureCode: "cancelled",
+    });
+    expect(service.getAgent(agent.id).status).toBe("stopped");
+    expect(service.getTrace(run.id).events.at(-1)?.type).toBe("run.cancelled");
   });
 
   it("atomically accepts only one concurrent run per Agent", async () => {
