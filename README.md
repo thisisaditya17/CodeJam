@@ -363,6 +363,8 @@ npm audit --omit=dev
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Agent Black Box design](docs/AGENT_BLACK_BOX.md)
+- [Three-minute demo script](docs/DEMO_SCRIPT.md)
+- [Devpost submission draft](docs/DEVPOST_SUBMISSION.md)
 - [Local POC](docs/LOCAL_POC.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [Hackathon extension guide](docs/HACKATHON_EXTENSION_GUIDE.md)
