@@ -14,3 +14,15 @@ export class RunCancelledError extends Error {
     this.name = "RunCancelledError";
   }
 }
+
+export class RunExecutionError extends Error {
+  constructor(
+    public readonly code: RunFailureCode,
+    message: string,
+    public readonly exitCode?: number,
+  ) {
+    super(message);
+    this.name = "RunExecutionError";
+  }
+}
+import type { RunFailureCode } from "./types.js";

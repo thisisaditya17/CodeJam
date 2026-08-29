@@ -4,12 +4,28 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentService } from "./agent-service.js";
 import { loadConfig } from "./config.js";
+import { RunExecutionError } from "./errors.js";
 import { JsonStore } from "./store.js";
 import type { AgentRunner, RunnerRequest, RunnerResult } from "./types.js";
 import { WorkspaceManager } from "./workspace.js";
 
 class FakeRunner implements AgentRunner {
   async run(request: RunnerRequest): Promise<RunnerResult> {
+    request.onTrace?.({
+      dedupeKey: "codex.turn_started",
+      type: "codex.turn_started",
+      source: "codex",
+      status: "running",
+      summary: "Codex turn started.",
+    });
+    request.onTrace?.({
+      dedupeKey: "codex.usage_reported",
+      type: "codex.usage_reported",
+      source: "codex",
+      status: "info",
+      summary: "Codex reported model usage.",
+      metadata: { usage: { inputTokens: 12, outputTokens: 5 } },
+    });
     return {
       output: "Completed: " + request.prompt,
       threadId: request.threadId ?? "fake-thread",
@@ -78,6 +94,121 @@ describe("Agent lifecycle", () => {
     expect(messages.map((message) => message.role)).toEqual(["user", "assistant"]);
     expect(messages[1]?.content).toContain("write hello world");
     expect(service.getAgent(agent.id).codexThreadId).toBe("fake-thread");
+    expect(service.getTrace(run.id).events.map((event) => event.type)).toEqual([
+      "run.queued",
+      "run.started",
+      "runtime.started",
+      "codex.turn_started",
+      "codex.usage_reported",
+      "runtime.completed",
+      "run.completed",
+    ]);
+  });
+
+  it("records and redacts a controlled Runtime failure without creating a chat message", async () => {
+    const service = await makeService({
+      run: async (request) => {
+        request.onTrace?.({
+          dedupeKey: "codex.turn_failed",
+          type: "codex.turn_failed",
+          source: "codex",
+          status: "failed",
+          summary:
+            "Injected failure. Authorization: Bearer techjam-demo-canary-not-a-secret",
+        });
+        throw new RunExecutionError(
+          "nonzero_exit",
+          "Runtime exited with code 17: Authorization: Bearer techjam-demo-canary-not-a-secret",
+          17,
+        );
+      },
+      cancel: async () => false,
+      isAvailable: async () => true,
+    });
+    const agent = await service.createAgent({ name: "Failure proof" });
+    const { run } = await service.startDemoRun(agent.id);
+    await expect.poll(() => service.getRun(run.id).status).toBe("failed");
+
+    expect(service.getMessages(agent.id)).toEqual([]);
+    expect(service.getRun(run.id)).toMatchObject({
+      failureCode: "nonzero_exit",
+      executionMode: "demo_runtime_failure",
+    });
+    const trace = service.getTrace(run.id);
+    const serialized = JSON.stringify(trace);
+    expect(serialized).not.toContain("techjam-demo-canary-not-a-secret");
+    expect(serialized).toContain("[REDACTED]");
+    expect(trace.events.at(-2)).toMatchObject({
+      type: "runtime.failed",
+      metadata: { failureCode: "nonzero_exit", exitCode: 17 },
+    });
+    expect(trace.events.at(-1)?.type).toBe("run.failed");
+  });
+
+  it("normalizes an interrupted Run after restart with truthful trace evidence", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "launchpad-restart-test-"));
+    temporaryDirectories.push(root);
+    const config = loadConfig({
+      NODE_ENV: "test",
+      APP_DATA_DIR: path.join(root, "data"),
+      AGENT_WORKSPACE_ROOT: path.join(root, "workspaces"),
+      CODEX_HOME: path.join(root, "codex"),
+      ARK_API_KEY: "test-key",
+      ARK_MODEL: "ep-test",
+    });
+    const databasePath = path.join(root, "data", "db.json");
+    const firstStore = new JsonStore(databasePath);
+    const first = new AgentService(
+      config,
+      firstStore,
+      new WorkspaceManager(path.join(root, "workspaces")),
+      new FakeRunner(),
+    );
+    await first.initialize();
+    const agent = await first.createAgent({ name: "Interrupted" });
+    const createdAt = new Date().toISOString();
+    await firstStore.mutate((database) => {
+      const storedAgent = database.agents.find((item) => item.id === agent.id);
+      if (storedAgent) storedAgent.status = "busy";
+      database.runs.push({
+        id: "run-interrupted",
+        agentId: agent.id,
+        status: "running",
+        prompt: "long task",
+        output: null,
+        error: null,
+        usage: null,
+        failureCode: null,
+        threadIdAtStart: null,
+        retryOfRunId: null,
+        rootRunId: "run-interrupted",
+        attemptNumber: 1,
+        recoveryMode: "none",
+        retryRequestKey: null,
+        recoveryInstruction: null,
+        executionMode: "codex",
+        startedAt: createdAt,
+        completedAt: null,
+        createdAt,
+      });
+    });
+
+    const restarted = new AgentService(
+      config,
+      new JsonStore(databasePath),
+      new WorkspaceManager(path.join(root, "workspaces")),
+      new FakeRunner(),
+    );
+    await restarted.initialize();
+    expect(restarted.getRun("run-interrupted")).toMatchObject({
+      status: "cancelled",
+      failureCode: "server_restart",
+    });
+    expect(restarted.getAgent(agent.id).status).toBe("ready");
+    expect(restarted.getTrace("run-interrupted").events.at(-1)).toMatchObject({
+      type: "run.interrupted",
+      metadata: { failureCode: "server_restart" },
+    });
   });
 
   it("atomically accepts only one concurrent run per Agent", async () => {

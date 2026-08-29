@@ -1,11 +1,14 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import type { AppConfig } from "./config.js";
-import { buildCodexArgs, parseCodexEventLine } from "./codex-runner.js";
-import { RunCancelledError } from "./errors.js";
+import {
+  buildCodexArgs,
+  createParsedEvents,
+  parseCodexEventLine,
+} from "./codex-runner.js";
+import { RunCancelledError, RunExecutionError } from "./errors.js";
 import type {
   AgentRunner,
-  RunUsage,
   RunnerRequest,
   RunnerResult,
 } from "./types.js";
@@ -22,13 +25,6 @@ interface ActiveContainer {
   termination: Promise<void> | null;
 }
 
-interface ParsedEvents {
-  messages: string[];
-  threadId: string | null;
-  usage: RunUsage | null;
-  errors: string[];
-}
-
 export function containerName(agentId: string, instanceId = "default"): string {
   const safeInstance = instanceId.replace(/[^a-zA-Z0-9_.-]/g, "-").slice(0, 32);
   const safeAgent = agentId.replace(/[^a-zA-Z0-9_.-]/g, "-").slice(0, 48);
@@ -41,6 +37,10 @@ export function buildContainerRunArgs(
 ): string[] {
   const name = containerName(request.agentId, config.runtimeInstanceId);
   const engineName = config.containerEngine.split(/[\\/]/).at(-1)?.toLowerCase();
+  const runtimeCommand =
+    request.executionMode === "demo_runtime_failure"
+      ? ["node", "/opt/agent-black-box/demo-runtime-failure.mjs"]
+      : ["codex", ...buildCodexArgs(request, config.codexSandboxMode, "/workspace")];
   return [
     "run",
     "--rm",
@@ -68,8 +68,7 @@ export function buildContainerRunArgs(
     String(config.containerPidsLimit),
     "--user",
     config.containerUser,
-    "--env",
-    "ARK_API_KEY",
+    ...(request.executionMode === "codex" ? ["--env", "ARK_API_KEY"] : []),
     "--env",
     "CODEX_HOME=/codex-home",
     "--env",
@@ -83,8 +82,7 @@ export function buildContainerRunArgs(
     "--workdir",
     "/workspace",
     config.containerRuntimeImage,
-    "codex",
-    ...buildCodexArgs(request, config.codexSandboxMode, "/workspace"),
+    ...runtimeCommand,
   ];
 }
 
@@ -166,12 +164,7 @@ export class ContainerCodexRunner implements AgentRunner {
     };
     this.active.set(request.agentId, active);
 
-    const parsed: ParsedEvents = {
-      messages: [],
-      threadId: request.threadId,
-      usage: null,
-      errors: [],
-    };
+    const parsed = createParsedEvents(request, "container");
     let stdout = "";
     let stderr = "";
     let totalBytes = 0;
@@ -204,30 +197,50 @@ export class ContainerCodexRunner implements AgentRunner {
     timeout.unref();
 
     try {
-      const exitCode = await new Promise<number>((resolve, reject) => {
-        child.once("error", reject);
-        child.once("close", (code) => resolve(code ?? 1));
-      });
+      let exitCode: number;
+      try {
+        exitCode = await new Promise<number>((resolve, reject) => {
+          child.once("error", reject);
+          child.once("close", (code) => resolve(code ?? 1));
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new RunExecutionError("spawn_error", "Runtime failed to start: " + detail);
+      }
       if (stdout.trim()) parseCodexEventLine(stdout.trim(), parsed);
       if (active.cancelled) throw new RunCancelledError();
       if (active.timedOut) {
-        throw new Error("Runtime timed out after " + this.config.codexTimeoutMs + " ms");
+        throw new RunExecutionError(
+          "timeout",
+          "Runtime timed out after " + this.config.codexTimeoutMs + " ms",
+        );
       }
       if (active.outputExceeded) {
-        throw new Error("Codex output exceeded CODEX_MAX_OUTPUT_BYTES");
+        throw new RunExecutionError(
+          "output_limit",
+          "Codex output exceeded CODEX_MAX_OUTPUT_BYTES",
+        );
       }
       if (exitCode !== 0) {
         const detail = parsed.errors.at(-1) ?? stderr.trim() ?? "No error detail";
-        throw new Error(
+        throw new RunExecutionError(
+          "nonzero_exit",
           this.config.containerEngine +
             " Runtime exited with code " +
             exitCode +
             ": " +
             detail,
+          exitCode,
         );
       }
       const output = parsed.messages.at(-1)?.trim();
-      if (!output) throw new Error("Codex completed without an agent message");
+      if (!output) {
+        const detail = parsed.errors.at(-1);
+        throw new RunExecutionError(
+          detail ? "codex_error" : "no_agent_message",
+          detail ?? "Codex completed without an agent message",
+        );
+      }
       return { output, threadId: parsed.threadId, usage: parsed.usage };
     } finally {
       clearTimeout(timeout);
@@ -235,11 +248,9 @@ export class ContainerCodexRunner implements AgentRunner {
     }
   }
 
-  private childEnvironment(): NodeJS.ProcessEnv {
-    const environment: NodeJS.ProcessEnv = {
-      ARK_API_KEY: this.config.arkApiKey,
-      NO_COLOR: "1",
-    };
+  private childEnvironment(executionMode: RunnerRequest["executionMode"] = "codex"): NodeJS.ProcessEnv {
+    const environment: NodeJS.ProcessEnv = { NO_COLOR: "1" };
+    if (executionMode === "codex") environment.ARK_API_KEY = this.config.arkApiKey;
     for (const name of [
       "PATH",
       "HOME",

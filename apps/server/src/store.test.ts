@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -15,6 +15,45 @@ afterEach(async () => {
 });
 
 describe("JsonStore", () => {
+  it("normalizes historical version-one data without trace fields", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "launchpad-store-history-test-"));
+    temporaryDirectories.push(root);
+    const filePath = path.join(root, "db.json");
+    await writeFile(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        agents: [],
+        messages: [],
+        runs: [
+          {
+            id: "run-1",
+            agentId: "agent-1",
+            status: "failed",
+            prompt: "test",
+            output: null,
+            error: "failed",
+            usage: null,
+            startedAt: null,
+            completedAt: null,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+    const store = new JsonStore(filePath);
+    await store.initialize();
+    const snapshot = store.snapshot();
+    expect(snapshot.traceEvents).toEqual([]);
+    expect(snapshot.runs[0]).toMatchObject({
+      rootRunId: "run-1",
+      attemptNumber: 1,
+      failureCode: null,
+      recoveryMode: "none",
+      executionMode: "codex",
+    });
+  });
+
   it("does not publish a mutation in memory when persistence fails", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "launchpad-store-test-"));
     temporaryDirectories.push(root);

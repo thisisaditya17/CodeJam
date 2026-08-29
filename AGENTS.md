@@ -418,6 +418,7 @@ Do not implement unless the user explicitly changes scope:
 - Do not use destructive Git commands, discard user work, commit, or push unless requested.
 - Do not suppress type, lint, test, or security failures broadly.
 - Never fabricate Runs, trace events, tests, metrics, or demo evidence.
+- Do not add AI-assistant authorship, co-author, session, provenance, or generation-attribution text to code, commits, documentation, metadata, or submission materials.
 - Remove raw captures, debug endpoints, noisy logs, hard-coded local paths, and temporary flags before completion.
 - Never expose or display ModelArk credentials.
 

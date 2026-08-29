@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, setAuthToken } from "./api";
-import type { Agent, AgentRun, Message, SystemInfo } from "./types";
+import type { Agent, AgentRun, Message, SystemInfo, TraceEvent } from "./types";
 
 const starterPrompts = [
   "Create a small TypeScript CLI that prints a weather summary from sample JSON.",
@@ -22,6 +22,19 @@ function formatTime(value: string): string {
   }).format(new Date(value));
 }
 
+function formatDuration(milliseconds: number | undefined): string | null {
+  if (milliseconds === undefined) return null;
+  if (milliseconds < 1_000) return milliseconds + " ms";
+  return (milliseconds / 1_000).toFixed(milliseconds < 10_000 ? 1 : 0) + " s";
+}
+
+function traceLabel(type: string): string {
+  return type
+    .split(".")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).replaceAll("_", " "))
+    .join(" · ");
+}
+
 function StatusPill({ status }: { status: Agent["status"] }) {
   return (
     <span className={"status status-" + status}>
@@ -35,10 +48,126 @@ function Spinner() {
   return <span className="spinner" aria-label="Loading" />;
 }
 
+function TracePanel({
+  runs,
+  selectedRunId,
+  events,
+  loading,
+  busy,
+  onSelectRun,
+  onDemoRun,
+}: {
+  runs: AgentRun[];
+  selectedRunId: string | null;
+  events: TraceEvent[];
+  loading: boolean;
+  busy: boolean;
+  onSelectRun: (runId: string) => void;
+  onDemoRun: () => void;
+}) {
+  const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
+  const redactionCount = events.reduce(
+    (total, event) => total + (event.metadata?.redactionCount ?? 0),
+    0,
+  );
+  const failure = events.find((event) => event.status === "failed");
+
+  return (
+    <aside className="trace-panel" aria-label="Agent Black Box trace">
+      <div className="trace-heading">
+        <div>
+          <span className="eyebrow">Agent Black Box</span>
+          <h3>Observable Run timeline</h3>
+        </div>
+        <span className="trace-shield" title="Trace data is allowlisted and redacted">
+          ◇
+        </span>
+      </div>
+
+      <div className="trace-controls">
+        <label>
+          Run history
+          <select
+            value={selectedRunId ?? ""}
+            onChange={(event) => onSelectRun(event.target.value)}
+            disabled={runs.length === 0}
+          >
+            {runs.length === 0 ? <option value="">No Runs yet</option> : null}
+            {runs.map((run) => (
+              <option key={run.id} value={run.id}>
+                Attempt {run.attemptNumber} · {run.status} · {formatTime(run.createdAt)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="button trace-demo-button"
+          type="button"
+          onClick={onDemoRun}
+          disabled={busy}
+        >
+          {busy ? <Spinner /> : "Run controlled failure proof"}
+        </button>
+      </div>
+
+      <div className="redaction-badge">
+        <span>✓</span>
+        Bounded safe capture · {redactionCount} sensitive value{redactionCount === 1 ? "" : "s"} redacted
+      </div>
+
+      {selectedRun?.failureCode && (
+        <div className="trace-failure-card" role="status">
+          <span>Failure boundary</span>
+          <strong>{selectedRun.failureCode.replaceAll("_", " ")}</strong>
+          <p>{failure?.summary ?? selectedRun.error ?? "The Runtime reported a failure."}</p>
+        </div>
+      )}
+
+      <div className="trace-events" aria-live="polite">
+        {loading ? (
+          <div className="trace-empty"><Spinner /> Loading trace evidence…</div>
+        ) : events.length === 0 ? (
+          <div className="trace-empty">
+            <strong>No trace evidence yet</strong>
+            <span>Start a Run to observe its control-plane and Runtime path.</span>
+          </div>
+        ) : (
+          events.map((event) => {
+            const duration = formatDuration(event.durationMs);
+            return (
+              <article className={"trace-event trace-event-" + event.status} key={event.id}>
+                <span className="trace-event-dot" />
+                <div className="trace-event-body">
+                  <div className="trace-event-meta">
+                    <strong>{traceLabel(event.type)}</strong>
+                    <span>#{event.sequence} · {formatTime(event.timestamp)}{duration ? " · " + duration : ""}</span>
+                  </div>
+                  <p>{event.summary}</p>
+                  {event.metadata && Object.keys(event.metadata).length > 0 ? (
+                    <details>
+                      <summary>Sanitized details</summary>
+                      <pre>{JSON.stringify(event.metadata, null, 2)}</pre>
+                    </details>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })
+        )}
+      </div>
+    </aside>
+  );
+}
+
 export default function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [runs, setRuns] = useState<AgentRun[]>([]);
+  const [selectedTraceRunId, setSelectedTraceRunId] = useState<string | null>(null);
+  const [traceEvents, setTraceEvents] = useState<TraceEvent[]>([]);
+  const [traceLoading, setTraceLoading] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -51,9 +180,11 @@ export default function App() {
   const [authInput, setAuthInput] = useState("");
   const messageEnd = useRef<HTMLDivElement>(null);
   const selectedIdRef = useRef<string | null>(null);
+  const selectedTraceRunIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const pollingRunIds = useRef(new Set<string>());
   selectedIdRef.current = selectedId;
+  selectedTraceRunIdRef.current = selectedTraceRunId;
 
   const selected = useMemo(
     () => agents.find((agent) => agent.id === selectedId) ?? null,
@@ -77,6 +208,22 @@ export default function App() {
     }
   }, []);
 
+  const refreshRuns = useCallback(async (agentId: string) => {
+    const result = await api.runs(agentId);
+    if (mountedRef.current && selectedIdRef.current === agentId) {
+      setRuns(result.runs);
+    }
+    return result.runs;
+  }, []);
+
+  const refreshTrace = useCallback(async (runId: string) => {
+    const result = await api.trace(runId);
+    if (mountedRef.current && selectedTraceRunIdRef.current === runId) {
+      setTraceEvents(result.events);
+    }
+    return result.events;
+  }, []);
+
   const bootstrap = useCallback(async () => {
     await Promise.all([refreshAgents(), api.system().then(setSystem)]);
   }, [refreshAgents]);
@@ -98,16 +245,22 @@ export default function App() {
 
   useEffect(() => {
     setActiveRun(null);
+    setRuns([]);
+    setSelectedTraceRunId(null);
+    setTraceEvents([]);
     setShowSettings(false);
     if (!selectedId) {
       setMessages([]);
       return;
     }
-    void Promise.all([refreshMessages(selectedId), api.runs(selectedId)])
-      .then(([, result]) => {
+    void Promise.all([refreshMessages(selectedId), refreshRuns(selectedId)])
+      .then(([, nextRuns]) => {
         if (selectedIdRef.current !== selectedId) return;
-        const latest = result.runs[0] ?? null;
+        const latest = nextRuns[0] ?? null;
         setActiveRun(latest);
+        setSelectedTraceRunId(latest?.id ?? null);
+        selectedTraceRunIdRef.current = latest?.id ?? null;
+        if (latest) void refreshTrace(latest.id);
         if (latest && ["queued", "running"].includes(latest.status)) {
           void pollRun(latest.id, selectedId).catch((reason) =>
             setError(reason instanceof Error ? reason.message : String(reason)),
@@ -117,7 +270,7 @@ export default function App() {
       .catch((reason) =>
         setError(reason instanceof Error ? reason.message : String(reason)),
       );
-  }, [refreshMessages, selectedId]);
+  }, [refreshMessages, refreshRuns, refreshTrace, selectedId]);
 
   useEffect(() => {
     if (selected) {
@@ -208,15 +361,31 @@ export default function App() {
       while (mountedRef.current) {
         await new Promise((resolve) => window.setTimeout(resolve, 900));
         if (!mountedRef.current) return;
-        const result = await api.run(runId);
+        const [result, trace] = await Promise.all([api.run(runId), api.trace(runId)]);
         if (selectedIdRef.current === agentId) setActiveRun(result.run);
+        if (selectedTraceRunIdRef.current === runId) setTraceEvents(trace.events);
         if (!["queued", "running"].includes(result.run.status)) {
-          await Promise.all([refreshMessages(agentId), refreshAgents()]);
+          await Promise.all([refreshMessages(agentId), refreshAgents(), refreshRuns(agentId)]);
           return;
         }
       }
     } finally {
       pollingRunIds.current.delete(runId);
+    }
+  };
+
+  const selectTraceRun = async (runId: string) => {
+    selectedTraceRunIdRef.current = runId;
+    setSelectedTraceRunId(runId);
+    setTraceEvents([]);
+    setTraceLoading(true);
+    setError(null);
+    try {
+      await refreshTrace(runId);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setTraceLoading(false);
     }
   };
 
@@ -231,6 +400,10 @@ export default function App() {
       if (selectedIdRef.current === selected.id) {
         setMessages((current) => [...current, result.message]);
         setActiveRun(result.run);
+        setRuns((current) => [result.run, ...current.filter((run) => run.id !== result.run.id)]);
+        selectedTraceRunIdRef.current = result.run.id;
+        setSelectedTraceRunId(result.run.id);
+        setTraceEvents([]);
       }
       setAgents((current) =>
         current.map((agent) =>
@@ -242,6 +415,31 @@ export default function App() {
       setError(reason instanceof Error ? reason.message : String(reason));
       setActiveRun(null);
       await refreshAgents();
+    }
+  };
+
+  const runFailureProof = async () => {
+    if (!selected) return;
+    setDemoBusy(true);
+    setError(null);
+    try {
+      const result = await api.demoRun(selected.id);
+      setActiveRun(result.run);
+      setRuns((current) => [result.run, ...current.filter((run) => run.id !== result.run.id)]);
+      selectedTraceRunIdRef.current = result.run.id;
+      setSelectedTraceRunId(result.run.id);
+      setTraceEvents([]);
+      setAgents((current) =>
+        current.map((agent) =>
+          agent.id === selected.id ? { ...agent, status: "busy" } : agent,
+        ),
+      );
+      await pollRun(result.run.id, selected.id);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      await refreshAgents();
+    } finally {
+      setDemoBusy(false);
     }
   };
 
@@ -489,7 +687,9 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="messages">
+              <div className="playground-body">
+                <div className="conversation-pane">
+                  <div className="messages">
                 {messages.length === 0 && !activeRun ? (
                   <div className="welcome">
                     <div className="welcome-orbit">
@@ -538,10 +738,10 @@ export default function App() {
                     <span>{activeRun.error}</span>
                   </article>
                 )}
-                <div ref={messageEnd} />
-              </div>
+                    <div ref={messageEnd} />
+                  </div>
 
-              <form className="composer" onSubmit={sendMessage}>
+                  <form className="composer" onSubmit={sendMessage}>
                 <textarea
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
@@ -580,7 +780,18 @@ export default function App() {
                     ↑
                   </button>
                 </div>
-              </form>
+                  </form>
+                </div>
+                <TracePanel
+                  runs={runs}
+                  selectedRunId={selectedTraceRunId}
+                  events={traceEvents}
+                  loading={traceLoading}
+                  busy={demoBusy || selected.status === "busy"}
+                  onSelectRun={(runId) => void selectTraceRun(runId)}
+                  onDemoRun={() => void runFailureProof()}
+                />
+              </div>
             </section>
           </>
         ) : (

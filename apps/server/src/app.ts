@@ -22,6 +22,7 @@ const updateAgentBody = createAgentBody.partial().refine(
 const messageBody = z.object({
   content: z.string().trim().min(1).max(50_000),
 });
+const demoRunBody = z.object({ fixture: z.literal("runtime_nonzero") });
 
 export async function createApp(
   config: AppConfig,
@@ -123,9 +124,21 @@ export async function createApp(
     return reply.code(202).send(result);
   });
 
+  app.post("/api/agents/:id/demo-runs", async (request, reply) => {
+    const { id } = agentIdParams.parse(request.params);
+    demoRunBody.parse(request.body);
+    const result = await service.startDemoRun(id);
+    return reply.code(202).send(result);
+  });
+
   app.get("/api/runs/:id", async (request) => {
     const { id } = runIdParams.parse(request.params);
     return { run: service.getRun(id) };
+  });
+
+  app.get("/api/runs/:id/trace", async (request) => {
+    const { id } = runIdParams.parse(request.params);
+    return service.getTrace(id);
   });
 
   if (config.nodeEnv === "production") {
