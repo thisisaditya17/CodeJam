@@ -1,0 +1,15 @@
+Agent platforms often tell operators only that a Run failed. Agent Black Box turns that final status into bounded, redacted, correlated evidence, while staying honest about what the platform can actually observe.
+
+The existing Playground, control plane, workspace, JSON store, and Runtime lifecycle remain intact. Observable events pass through one allowlisted adapter and one redaction boundary before deterministic sequence assignment and persistence. Hidden reasoning and raw command output are deliberately excluded.
+
+First, here is the credential-free success proof. This is not a static success message and it is not represented as model inference. The Runtime writes recovery-proof dot text inside the Agent workspace, reads it back, verifies the exact content, and emits real command, file-change, usage, and terminal evidence. The Run completes with zero model tokens.
+
+Next is the controlled failure. It travels through the same process or container boundary, parser, store, API, polling loop, and timeline. The command fails first, the Runtime exits with code seventeen, and the final boundary is classified deterministically. A safe canary exists in the source event, but only the redacted marker reaches storage and the browser.
+
+Recovery never rewrites failure into success. Selecting retry creates a new immutable attempt from the persisted workspace. The server enforces one direct child, a UUID idempotency key, Agent availability, and the actual recovery mode in one serialized mutation.
+
+Attempt one remains failed and inspectable. Attempt two completes the real workspace action. Repeating the same retry request returns the existing attempt instead of creating another Run.
+
+The project includes forty-five automated tests covering redaction, malformed events, bounded storage, historical data, restart interruption, failure boundaries, API validation, concurrency, duplicate retry, and both Runtime providers. A clean clone builds successfully and the production dependency audit reports zero vulnerabilities.
+
+Agent Black Box makes Agent infrastructure understandable without pretending to observe what it cannot. Every Run tells the truth.

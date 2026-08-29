@@ -322,6 +322,44 @@ export default function App() {
   }, [refreshMessages, refreshRuns, refreshTrace, selectedId]);
 
   useEffect(() => {
+    if (
+      !selectedId ||
+      !new URLSearchParams(window.location.search).has("autofollow")
+    ) {
+      return;
+    }
+    let disposed = false;
+    const followLatestRun = async () => {
+      try {
+        const nextRuns = await refreshRuns(selectedId);
+        const latest = nextRuns[0];
+        if (disposed || !latest || selectedIdRef.current !== selectedId) return;
+        setActiveRun(latest);
+        if (selectedTraceRunIdRef.current !== latest.id) {
+          selectedTraceRunIdRef.current = latest.id;
+          setSelectedTraceRunId(latest.id);
+          setTraceEvents([]);
+        }
+        await Promise.all([
+          refreshTrace(latest.id),
+          refreshMessages(selectedId),
+          refreshAgents(),
+        ]);
+      } catch (reason) {
+        if (!disposed) {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      }
+    };
+    void followLatestRun();
+    const interval = window.setInterval(() => void followLatestRun(), 900);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, [refreshAgents, refreshMessages, refreshRuns, refreshTrace, selectedId]);
+
+  useEffect(() => {
     if (selected) {
       setForm({
         name: selected.name,

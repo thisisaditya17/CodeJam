@@ -6,7 +6,10 @@
 2. Start the application with a disposable local state directory.
 3. Create an Agent named `Recovery Builder` with the description
    `Diagnosable workspace automation`.
-4. Keep the Playground and Black Box panel visible at a 1280 x 720 viewport.
+4. Append `?autofollow=1` to the local URL when API calls will drive the
+   recording. This view follows real Runs and traces; it does not create or
+   fabricate events.
+5. Keep the Playground and Black Box panel visible at a 1280 x 720 viewport.
 
 ## Script
 
