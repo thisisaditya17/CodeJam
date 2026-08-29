@@ -175,6 +175,23 @@ describe("Codex runner protocol", () => {
     expect(command.args).not.toContain("real-secret");
   });
 
+  it("selects the credential-free success executable", () => {
+    const config = loadConfig({ NODE_ENV: "test", ARK_API_KEY: "real-secret" });
+    const command = localExecutionCommand(
+      {
+        agentId: "agent",
+        workspacePath: "/tmp/workspace",
+        prompt: "workspace proof",
+        threadId: null,
+        executionMode: "demo_runtime_success",
+      },
+      config,
+    );
+    expect(command.bin).toBe(process.execPath);
+    expect(command.args.at(-1)).toMatch(/demo-runtime-success\.mjs$/);
+    expect(command.args).not.toContain("real-secret");
+  });
+
   it("ignores malformed and unknown JSONL without creating trace evidence", () => {
     const traces: TraceDraft[] = [];
     const parsed = {

@@ -54,18 +54,25 @@ function TracePanel({
   events,
   loading,
   busy,
+  retryBusy,
   onSelectRun,
   onDemoRun,
+  onRetry,
 }: {
   runs: AgentRun[];
   selectedRunId: string | null;
   events: TraceEvent[];
   loading: boolean;
   busy: boolean;
+  retryBusy: boolean;
   onSelectRun: (runId: string) => void;
-  onDemoRun: () => void;
+  onDemoRun: (fixture: "runtime_nonzero" | "runtime_success") => void;
+  onRetry: (runId: string) => void;
 }) {
   const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
+  const linkedRetry = runs.find((run) => run.retryOfRunId === selectedRun?.id) ?? null;
+  const retryEligible =
+    selectedRun?.status === "failed" || selectedRun?.status === "cancelled";
   const redactionCount = events.reduce(
     (total, event) => total + (event.metadata?.redactionCount ?? 0),
     0,
@@ -103,14 +110,24 @@ function TracePanel({
             ))}
           </select>
         </label>
-        <button
-          className="button trace-demo-button"
-          type="button"
-          onClick={onDemoRun}
-          disabled={busy}
-        >
-          {busy ? <Spinner /> : "Run controlled failure proof"}
-        </button>
+        <div className="trace-proof-buttons">
+          <button
+            className="button trace-success-button"
+            type="button"
+            onClick={() => onDemoRun("runtime_success")}
+            disabled={busy}
+          >
+            {busy ? <Spinner /> : "Run credential-free success proof"}
+          </button>
+          <button
+            className="button trace-demo-button"
+            type="button"
+            onClick={() => onDemoRun("runtime_nonzero")}
+            disabled={busy}
+          >
+            Run controlled failure proof
+          </button>
+        </div>
       </div>
 
       <div className="redaction-badge">
@@ -128,6 +145,31 @@ function TracePanel({
           ) : null}
         </div>
       )}
+
+      {selectedRun?.recoveryMode && selectedRun.recoveryMode !== "none" ? (
+        <div className="recovery-mode-badge">
+          Recovery mode · {selectedRun.recoveryMode.replaceAll("_", " ")}
+        </div>
+      ) : null}
+
+      {linkedRetry ? (
+        <button
+          className="button retry-button"
+          type="button"
+          onClick={() => onSelectRun(linkedRetry.id)}
+        >
+          View linked attempt {linkedRetry.attemptNumber}
+        </button>
+      ) : retryEligible && selectedRun ? (
+        <button
+          className="button retry-button"
+          type="button"
+          disabled={busy || retryBusy}
+          onClick={() => onRetry(selectedRun.id)}
+        >
+          {retryBusy ? <Spinner /> : "Retry from persisted workspace"}
+        </button>
+      ) : null}
 
       <div className="trace-events" aria-live="polite">
         {loading ? (
@@ -174,6 +216,7 @@ export default function App() {
   const [traceEvents, setTraceEvents] = useState<TraceEvent[]>([]);
   const [traceLoading, setTraceLoading] = useState(false);
   const [demoBusy, setDemoBusy] = useState(false);
+  const [retryBusy, setRetryBusy] = useState(false);
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -424,12 +467,12 @@ export default function App() {
     }
   };
 
-  const runFailureProof = async () => {
+  const runProof = async (fixture: "runtime_nonzero" | "runtime_success") => {
     if (!selected) return;
     setDemoBusy(true);
     setError(null);
     try {
-      const result = await api.demoRun(selected.id);
+      const result = await api.demoRun(selected.id, fixture);
       setActiveRun(result.run);
       setRuns((current) => [result.run, ...current.filter((run) => run.id !== result.run.id)]);
       selectedTraceRunIdRef.current = result.run.id;
@@ -446,6 +489,31 @@ export default function App() {
       await refreshAgents();
     } finally {
       setDemoBusy(false);
+    }
+  };
+
+  const retryRun = async (runId: string) => {
+    if (!selected) return;
+    setRetryBusy(true);
+    setError(null);
+    try {
+      const result = await api.retryRun(runId, crypto.randomUUID());
+      setActiveRun(result.run);
+      setRuns((current) => [result.run, ...current.filter((run) => run.id !== result.run.id)]);
+      selectedTraceRunIdRef.current = result.run.id;
+      setSelectedTraceRunId(result.run.id);
+      setTraceEvents([]);
+      setAgents((current) =>
+        current.map((agent) =>
+          agent.id === selected.id ? { ...agent, status: "busy" } : agent,
+        ),
+      );
+      await pollRun(result.run.id, selected.id);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      await refreshAgents();
+    } finally {
+      setRetryBusy(false);
     }
   };
 
@@ -794,8 +862,10 @@ export default function App() {
                   events={traceEvents}
                   loading={traceLoading}
                   busy={demoBusy || selected.status === "busy"}
+                  retryBusy={retryBusy}
                   onSelectRun={(runId) => void selectTraceRun(runId)}
-                  onDemoRun={() => void runFailureProof()}
+                  onDemoRun={(fixture) => void runProof(fixture)}
+                  onRetry={(runId) => void retryRun(runId)}
                 />
               </div>
             </section>

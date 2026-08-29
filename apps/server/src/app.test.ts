@@ -58,6 +58,7 @@ describe("HTTP boundary", () => {
         events: [],
       }),
       startDemoRun: async (id: string) => ({ run: { id: runId, agentId: id } }),
+      retryRun: async () => ({ run: { id: runId, agentId } }),
     } as unknown as AgentService;
     const app = await createApp(loadConfig({ NODE_ENV: "test" }), boundaryService);
 
@@ -79,6 +80,27 @@ describe("HTTP boundary", () => {
     });
     expect(accepted.statusCode).toBe(202);
     expect(accepted.json()).toMatchObject({ run: { id: runId, agentId } });
+
+    const success = await app.inject({
+      method: "POST",
+      url: "/api/agents/" + agentId + "/demo-runs",
+      payload: { fixture: "runtime_success" },
+    });
+    expect(success.statusCode).toBe(202);
+
+    const invalidRetry = await app.inject({
+      method: "POST",
+      url: "/api/runs/" + runId + "/retries",
+      payload: { idempotencyKey: "not-a-uuid" },
+    });
+    expect(invalidRetry.statusCode).toBe(400);
+
+    const retry = await app.inject({
+      method: "POST",
+      url: "/api/runs/" + runId + "/retries",
+      payload: { idempotencyKey: "66666666-6666-4666-8666-666666666666" },
+    });
+    expect(retry.statusCode).toBe(202);
     await app.close();
   });
 });

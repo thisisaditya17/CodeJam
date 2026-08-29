@@ -24,6 +24,7 @@ import { WorkspaceManager } from "./workspace.js";
 const now = () => new Date().toISOString();
 const DEMO_RECOVERY_PROMPT =
   "Create recovery-proof.txt containing 'Agent Black Box recovery succeeded', confirm it exists, and summarize the result.";
+type DemoFixture = "runtime_nonzero" | "runtime_success";
 
 interface CreateRunOptions {
   executionMode: RunnerExecutionMode;
@@ -211,9 +212,10 @@ export class AgentService {
     return { run: result.run, message: result.message };
   }
 
-  async startDemoRun(agentId: string): Promise<{ run: AgentRun }> {
+  async startDemoRun(agentId: string, fixture: DemoFixture): Promise<{ run: AgentRun }> {
     const result = await this.createRun(agentId, DEMO_RECOVERY_PROMPT, {
-      executionMode: "demo_runtime_failure",
+      executionMode:
+        fixture === "runtime_success" ? "demo_runtime_success" : "demo_runtime_failure",
       recordUserMessage: false,
     });
     return { run: result.run };
@@ -280,7 +282,9 @@ export class AgentService {
         summary:
           options.executionMode === "demo_runtime_failure"
             ? "Controlled failure proof queued."
-            : "Agent Run queued.",
+            : options.executionMode === "demo_runtime_success"
+              ? "Credential-free success proof queued."
+              : "Agent Run queued.",
         metadata: {
           provider: this.config.runtimeProvider,
           recoveryMode: run.recoveryMode,
@@ -292,16 +296,116 @@ export class AgentService {
       storedAgent.updatedAt = timestamp;
       return snapshot;
     });
+    this.scheduleExecution(agentAtStart, run);
+    return { run, message };
+  }
+
+  async retryRun(runId: string, idempotencyKey: string): Promise<{ run: AgentRun }> {
+    const timestamp = now();
+    const newRunId = randomUUID();
+    const result = await this.store.mutate((database) => {
+      const source = database.runs.find((item) => item.id === runId);
+      if (!source) throw new HttpError(404, "Run not found");
+      if (source.status !== "failed" && source.status !== "cancelled") {
+        throw new HttpError(409, "Only failed or cancelled Runs can be retried");
+      }
+      const existing = database.runs.find((item) => item.retryOfRunId === source.id);
+      if (existing) {
+        if (existing.retryRequestKey === idempotencyKey) {
+          return { run: structuredClone(existing), agentAtStart: null };
+        }
+        throw new HttpError(409, "A retry already exists for this Run");
+      }
+      const agent = database.agents.find((item) => item.id === source.agentId);
+      if (!agent) throw new HttpError(404, "Agent not found");
+      if (agent.status === "stopped") {
+        throw new HttpError(409, "Start the Agent before retrying this Run");
+      }
+      if (agent.status === "busy") {
+        throw new HttpError(409, "This Agent is already running");
+      }
+
+      const executionMode: RunnerExecutionMode =
+        source.executionMode === "demo_runtime_failure" ? "demo_runtime_success" : "codex";
+      if (executionMode === "codex" && !isArkConfigured(this.config)) {
+        throw new HttpError(
+          503,
+          "Ark is not configured. Set ARK_API_KEY and ARK_MODEL, then restart.",
+        );
+      }
+      const canReuseThread =
+        executionMode === "codex" && source.threadIdAtStart !== null;
+      const retry: AgentRun = {
+        id: newRunId,
+        agentId: source.agentId,
+        status: "queued",
+        prompt: source.prompt,
+        output: null,
+        error: null,
+        usage: null,
+        failureCode: null,
+        threadIdAtStart: canReuseThread ? source.threadIdAtStart : null,
+        retryOfRunId: source.id,
+        rootRunId: source.rootRunId,
+        attemptNumber: source.attemptNumber + 1,
+        recoveryMode: canReuseThread ? "thread_and_workspace" : "workspace_only",
+        retryRequestKey: idempotencyKey,
+        recoveryInstruction:
+          "Recovery attempt: inspect the persisted workspace first, avoid repeating completed side effects, and finish the original task safely.",
+        executionMode,
+        startedAt: null,
+        completedAt: null,
+        createdAt: timestamp,
+      };
+      const agentAtStart = structuredClone(agent);
+      database.runs.push(retry);
+      agent.status = "busy";
+      agent.lastError = null;
+      agent.updatedAt = timestamp;
+      appendTraceEvent(database, source.agentId, source.id, {
+        dedupeKey: "retry.requested",
+        type: "retry.requested",
+        source: "recovery",
+        status: "info",
+        timestamp,
+        summary: "A linked retry was requested.",
+        metadata: { recoveryMode: retry.recoveryMode },
+      });
+      appendTraceEvent(database, retry.agentId, retry.id, {
+        dedupeKey: "run.queued",
+        type: "run.queued",
+        source: "control_plane",
+        status: "queued",
+        timestamp,
+        summary: "Linked retry queued.",
+        metadata: { recoveryMode: retry.recoveryMode },
+      });
+      appendTraceEvent(database, retry.agentId, retry.id, {
+        dedupeKey: "retry.created",
+        type: "retry.created",
+        source: "recovery",
+        status: "queued",
+        timestamp,
+        summary: "A new immutable retry attempt was created.",
+        metadata: { recoveryMode: retry.recoveryMode },
+      });
+      return { run: structuredClone(retry), agentAtStart };
+    });
+
+    if (result.agentAtStart) this.scheduleExecution(result.agentAtStart, result.run);
+    return { run: result.run };
+  }
+
+  private scheduleExecution(agentAtStart: Agent, run: AgentRun): void {
     const execution = this.executeRun(agentAtStart, run);
-    this.activeExecutions.set(agentId, execution);
+    this.activeExecutions.set(agentAtStart.id, execution);
     void execution
       .finally(() => {
-        if (this.activeExecutions.get(agentId) === execution) {
-          this.activeExecutions.delete(agentId);
+        if (this.activeExecutions.get(agentAtStart.id) === execution) {
+          this.activeExecutions.delete(agentAtStart.id);
         }
       })
       .catch(() => undefined);
-    return { run, message };
   }
 
   async systemInfo(): Promise<Record<string, unknown>> {
@@ -349,7 +453,9 @@ export class AgentService {
           summary:
             run.executionMode === "demo_runtime_failure"
               ? "Controlled failure Runtime started."
-              : "Agent Runtime started.",
+              : run.executionMode === "demo_runtime_success"
+                ? "Credential-free success Runtime started."
+                : "Agent Runtime started.",
           metadata: { provider: this.config.runtimeProvider },
         });
       }
@@ -390,7 +496,7 @@ export class AgentService {
           createdAt: completedAt,
         });
         agent.status = "ready";
-        agent.codexThreadId = result.threadId;
+        if (run.executionMode === "codex") agent.codexThreadId = result.threadId;
         agent.lastError = null;
         agent.updatedAt = completedAt;
         appendTraceEvent(database, agent.id, run.id, {

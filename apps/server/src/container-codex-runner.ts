@@ -40,7 +40,9 @@ export function buildContainerRunArgs(
   const runtimeCommand =
     request.executionMode === "demo_runtime_failure"
       ? ["node", "/opt/agent-black-box/demo-runtime-failure.mjs"]
-      : ["codex", ...buildCodexArgs(request, config.codexSandboxMode, "/workspace")];
+      : request.executionMode === "demo_runtime_success"
+        ? ["node", "/opt/agent-black-box/demo-runtime-success.mjs"]
+        : ["codex", ...buildCodexArgs(request, config.codexSandboxMode, "/workspace")];
   return [
     "run",
     "--rm",

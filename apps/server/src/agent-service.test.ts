@@ -126,7 +126,7 @@ describe("Agent lifecycle", () => {
       isAvailable: async () => true,
     });
     const agent = await service.createAgent({ name: "Failure proof" });
-    const { run } = await service.startDemoRun(agent.id);
+    const { run } = await service.startDemoRun(agent.id, "runtime_nonzero");
     await expect.poll(() => service.getRun(run.id).status).toBe("failed");
 
     expect(service.getMessages(agent.id)).toEqual([]);
@@ -143,6 +143,107 @@ describe("Agent lifecycle", () => {
       metadata: { failureCode: "nonzero_exit", exitCode: 17 },
     });
     expect(trace.events.at(-1)?.type).toBe("run.failed");
+  });
+
+  it("creates exactly one immutable workspace-only retry for a controlled failure", async () => {
+    const requests: RunnerRequest[] = [];
+    const service = await makeService({
+      run: async (request) => {
+        requests.push(request);
+        if (request.executionMode === "demo_runtime_failure") {
+          request.onTrace?.({
+            dedupeKey: "codex.turn_failed",
+            type: "codex.turn_failed",
+            source: "codex",
+            status: "failed",
+            summary: "Controlled failure",
+          });
+          throw new RunExecutionError("nonzero_exit", "Controlled failure", 17);
+        }
+        request.onTrace?.({
+          dedupeKey: "codex.turn_completed",
+          type: "codex.turn_completed",
+          source: "codex",
+          status: "succeeded",
+          summary: "Credential-free recovery completed.",
+        });
+        return {
+          output: "Recovered from the persisted workspace",
+          threadId: "fixture-thread-must-not-replace-agent-thread",
+          usage: { inputTokens: 0, outputTokens: 0 },
+        };
+      },
+      cancel: async () => false,
+      isAvailable: async () => true,
+    });
+    const agent = await service.createAgent({ name: "Retry proof" });
+    const { run: failed } = await service.startDemoRun(agent.id, "runtime_nonzero");
+    await expect.poll(() => service.getRun(failed.id).status).toBe("failed");
+    const immutableSource = service.getRun(failed.id);
+    const retryKey = "33333333-3333-4333-8333-333333333333";
+
+    const first = await service.retryRun(failed.id, retryKey);
+    const duplicate = await service.retryRun(failed.id, retryKey);
+    expect(duplicate.run.id).toBe(first.run.id);
+    await expect(
+      service.retryRun(failed.id, "44444444-4444-4444-8444-444444444444"),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    await expect.poll(() => service.getRun(first.run.id).status).toBe("completed");
+
+    expect(service.getRun(first.run.id)).toMatchObject({
+      retryOfRunId: failed.id,
+      rootRunId: failed.id,
+      attemptNumber: 2,
+      recoveryMode: "workspace_only",
+      executionMode: "demo_runtime_success",
+      threadIdAtStart: null,
+    });
+    expect(service.getRun(failed.id)).toEqual(immutableSource);
+    expect(service.getRuns(agent.id).filter((run) => run.retryOfRunId === failed.id)).toHaveLength(1);
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.workspacePath).toBe(requests[1]?.workspacePath);
+    expect(requests[1]?.threadId).toBeNull();
+    expect(service.getTrace(failed.id).events.at(-1)?.type).toBe("retry.requested");
+    expect(service.getTrace(first.run.id).events.slice(0, 2).map((event) => event.type)).toEqual([
+      "run.queued",
+      "retry.created",
+    ]);
+    expect(service.getMessages(agent.id).map((message) => message.role)).toEqual([
+      "assistant",
+    ]);
+    expect(service.getAgent(agent.id).codexThreadId).toBeNull();
+  });
+
+  it("rejects retry while the Agent is busy", async () => {
+    let finishBusy!: (result: RunnerResult) => void;
+    let holdSuccess = true;
+    const pending = new Promise<RunnerResult>((resolve) => {
+      finishBusy = resolve;
+    });
+    const service = await makeService({
+      run: async (request) => {
+        if (request.executionMode === "demo_runtime_failure") {
+          throw new RunExecutionError("nonzero_exit", "Controlled failure", 17);
+        }
+        if (holdSuccess) return pending;
+        return { output: "done", threadId: null, usage: null };
+      },
+      cancel: async () => false,
+      isAvailable: async () => true,
+    });
+    const agent = await service.createAgent({ name: "Busy retry" });
+    const { run: failed } = await service.startDemoRun(agent.id, "runtime_nonzero");
+    await expect.poll(() => service.getRun(failed.id).status).toBe("failed");
+    const { run: busyRun } = await service.startDemoRun(agent.id, "runtime_success");
+    await expect.poll(() => service.getRun(busyRun.id).status).toBe("running");
+
+    await expect(
+      service.retryRun(failed.id, "55555555-5555-4555-8555-555555555555"),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    holdSuccess = false;
+    finishBusy({ output: "busy proof completed", threadId: null, usage: null });
+    await expect.poll(() => service.getRun(busyRun.id).status).toBe("completed");
   });
 
   it("normalizes an interrupted Run after restart with truthful trace evidence", async () => {

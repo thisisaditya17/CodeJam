@@ -23,14 +23,22 @@ store, disposable Runtime containers, or ModelArk integration.
 - Trace strings and failure messages are bounded and centrally redacted.
 - A controlled process/container failure traverses the same Runner, parser,
   persistence, API, and UI path as normal execution.
+- A credential-free success proof performs and verifies a real workspace write
+  when ModelArk is not yet active.
 - Restart-interrupted Runs remain `cancelled` and gain truthful
   `server_restart` evidence.
+- A failed Run can create one immutable, idempotent linked retry from the same
+  persisted workspace.
 
 ## Screenshots
 
 ### Agent Black Box timeline
 
 ![Agent Black Box showing a redacted failure boundary and ordered Runtime timeline](docs/assets/agent-black-box.png)
+
+### Linked workspace recovery
+
+![Agent Black Box showing a completed linked retry and workspace-only recovery mode](docs/assets/agent-black-box-retry.png)
 
 ### Create an Agent
 
@@ -46,6 +54,9 @@ store, disposable Runtime containers, or ModelArk integration.
 - Central trace redaction, typed metadata, deduplication, and bounded storage
 - Run history with failure-boundary highlighting
 - Reproducible controlled Runtime failure proof
+- Credential-free success proof with a verified workspace file change
+- Linked retry with idempotency, immutable attempt history, and explicit
+  workspace/thread recovery mode
 - Persistent Agent workspaces and Codex sessions
 - Disposable Docker, Colima, or Podman container for each local turn
 - Docker and Terraform deployment paths for Volcengine ECS
@@ -130,6 +141,19 @@ The fixture is labelled as injected evidence. It emits the pinned JSONL shape
 from a real child process or disposable Runtime container and exits with code
 17. It does not call ModelArk, execute an external write, or receive the Ark
 credential.
+
+### Run without an active model
+
+Select **Run credential-free success proof**. The disposable Runtime writes and
+reads back `recovery-proof.txt`, emits the pinned command/file/usage protocol,
+and completes with zero model tokens. This is labelled as Runtime proof rather
+than represented as model inference.
+
+After a controlled failure, select **Retry from persisted workspace**. The
+server creates one immutable attempt 2. Repeating the same idempotency request
+returns that attempt; a different request is rejected. Controlled failure
+retries use the credential-free success Runtime, while real model failures use
+the same model path when ModelArk is active.
 
 ### 5. Stop and resume
 
@@ -273,6 +297,8 @@ the trust boundary, event contract, redaction scope, and failure model.
 ```text
 GET  /api/runs/:id/trace
 POST /api/agents/:id/demo-runs  { "fixture": "runtime_nonzero" }
+POST /api/agents/:id/demo-runs  { "fixture": "runtime_success" }
+POST /api/runs/:id/retries      { "idempotencyKey": "UUID" }
 ```
 
 Trace responses contain typed, sanitized events only. There is no raw JSONL,
@@ -283,7 +309,7 @@ the trace payload.
 
 | Track 1 category | Evidence |
 | --- | --- |
-| End-to-end behaviour (40%) | Live Playground Run plus controlled failure through the real backend/Runtime path and timeline UI. |
+| End-to-end behaviour (40%) | Successful workspace action, controlled failure, and linked recovery through the real backend/Runtime path and timeline UI. |
 | Design and integration (25%) | Shared Runner adapter, server-owned recorder/redactor, additive version-1 storage compatibility, no replacement platform. |
 | Verification and robustness (20%) | Parser, redaction, sequence, cap, historical data, restart, API, concurrency, and fixture tests. |
 | Demo and reproducibility (15%) | One-command local POC, fixed failure proof, Run history, architecture diagram, and documented three-minute path. |
@@ -296,7 +322,8 @@ the trace payload.
    usage, and completion.
 4. **1:15-2:05** - Trigger the controlled failure and show the causal chain,
    exit code, failure boundary, and redacted canary.
-5. **2:05-2:40** - Switch between Run histories and inspect sanitized details.
+5. **2:05-2:40** - Retry from the persisted workspace and navigate between the
+   immutable failed and successful attempts.
 6. **2:40-3:00** - Show the green validation gate and known limitations.
 
 ## Known limitations
@@ -311,6 +338,9 @@ the trace payload.
 - Local disposable containers are the supported judging path; ECS is optional.
 - A controlled failure proves middleware behaviour but is not represented as a
   real provider outage.
+- Credential-free success proves Runtime/file/recovery behaviour but is not
+  represented as model inference. Switch to the preferred free-quota model once
+  it is active.
 
 ## Team contribution
 

@@ -89,4 +89,31 @@ describe("Container Codex runner", () => {
     expect(args).not.toContain("ARK_API_KEY");
     expect(args).not.toContain("must-not-be-forwarded");
   });
+
+  it("runs the credential-free success fixture without forwarding the Ark credential", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      ARK_API_KEY: "must-not-be-forwarded",
+      ARK_MODEL: "ep-test",
+      CODEX_HOME: "/tmp/codex-home",
+      RUNTIME_PROVIDER: "container",
+      CONTAINER_RUNTIME_IMAGE: "runtime:test",
+    });
+    const args = buildContainerRunArgs(
+      {
+        agentId: "agent",
+        workspacePath: "/tmp/workspace",
+        prompt: "workspace proof",
+        threadId: null,
+        executionMode: "demo_runtime_success",
+      },
+      config,
+    );
+    expect(args.slice(-2)).toEqual([
+      "node",
+      "/opt/agent-black-box/demo-runtime-success.mjs",
+    ]);
+    expect(args).not.toContain("ARK_API_KEY");
+    expect(args).not.toContain("must-not-be-forwarded");
+  });
 });

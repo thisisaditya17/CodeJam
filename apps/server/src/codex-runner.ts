@@ -282,10 +282,14 @@ export function localExecutionCommand(
   request: RunnerRequest,
   config: AppConfig,
 ): { bin: string; args: string[] } {
-  if (request.executionMode === "demo_runtime_failure") {
+  if (request.executionMode !== "codex") {
+    const fixture =
+      request.executionMode === "demo_runtime_success"
+        ? "demo-runtime-success.mjs"
+        : "demo-runtime-failure.mjs";
     return {
       bin: process.execPath,
-      args: [fileURLToPath(new URL("../../../scripts/demo-runtime-failure.mjs", import.meta.url))],
+      args: [fileURLToPath(new URL("../../../scripts/" + fixture, import.meta.url))],
     };
   }
   return { bin: config.codexBin, args: buildCodexArgs(request, config.codexSandboxMode) };

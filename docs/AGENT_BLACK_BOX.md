@@ -18,11 +18,12 @@ flowchart TB
       Redactor --> Recorder["Dedupe + deterministic sequence"]
       Recorder --> Store["Atomic single-process JSON store"]
       Store --> API
+      Service -. immutable retry relationship .-> Store
     end
 
     subgraph RuntimeBoundary["Disposable Runtime boundary"]
       Runner -->|normal Run| Codex["Codex CLI 0.111.0"]
-      Runner -->|labelled proof| Fixture["Credential-free failure executable"]
+      Runner -->|labelled proofs| Fixture["Credential-free success/failure executables"]
     end
 
     Codex --> ModelArk["ModelArk Responses API"]
@@ -86,6 +87,22 @@ the same parser, recorder, JSON store, API, polling, and timeline as a normal
 Run. This makes the negative case deterministic without fabricating a success
 or relying on a transient external outage.
 
+## Credential-free success and linked recovery
+
+When ModelArk is unavailable, the success fixture performs a real write and
+read-back verification of `recovery-proof.txt` inside the selected Agent
+workspace. It emits command, file-change, usage, and terminal JSONL evidence
+with zero model tokens. The UI and documentation identify it as a Runtime proof,
+not model inference.
+
+A retry is a new immutable Run. The server validates the unsuccessful source,
+Agent availability, and one direct child per source inside a serialized store
+mutation. The caller supplies a UUID idempotency key: repeating the same key
+returns the existing attempt, while a different key conflicts. Controlled
+failure retries select the credential-free success Runtime; real model retries
+reuse a thread only when it existed before the failed attempt. Every retry
+reuses the persisted workspace and exposes its actual recovery mode.
+
 ## Security and operational limitations
 
 - The store serializes writes and supports one process.
@@ -96,3 +113,5 @@ or relying on a transient external outage.
   limitations.
 - The controlled fixture is safe demonstration evidence, not a production
   incident simulator.
+- Retrying arbitrary external side effects is not production-safe; the included
+  proof uses an idempotent local file target.

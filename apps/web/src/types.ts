@@ -56,7 +56,7 @@ export interface AgentRun {
   recoveryMode: RecoveryMode;
   retryRequestKey: string | null;
   recoveryInstruction: string | null;
-  executionMode: "codex" | "demo_runtime_failure";
+  executionMode: "codex" | "demo_runtime_failure" | "demo_runtime_success";
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;

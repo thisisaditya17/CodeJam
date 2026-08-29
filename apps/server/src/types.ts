@@ -14,7 +14,10 @@ export type RunFailureCode =
   | "trace_persistence"
   | "unknown";
 export type RecoveryMode = "none" | "workspace_only" | "thread_and_workspace";
-export type RunnerExecutionMode = "codex" | "demo_runtime_failure";
+export type RunnerExecutionMode =
+  | "codex"
+  | "demo_runtime_failure"
+  | "demo_runtime_success";
 export type TraceSource = "control_plane" | "runtime" | "codex" | "recovery";
 export type TraceStatus =
   | "info"
