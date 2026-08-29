@@ -100,8 +100,9 @@ does not use an LLM.
   model tokens.
 - Forty-five automated tests pass, the production build succeeds, and the
   production dependency audit reports zero vulnerabilities.
-- A fresh clone of the public default branch passes the complete validation
-  gate.
+- A fresh clone of the public default branch passes typechecking, all 45 tests,
+  both production builds, the production dependency audit, and Docker Compose
+  configuration validation.
 
 ## What was learned
 
