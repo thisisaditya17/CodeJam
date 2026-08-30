@@ -25,6 +25,8 @@ store, disposable Runtime containers, or ModelArk integration.
   persistence, API, and UI path as normal execution.
 - A fixed, visible Playground task performs and verifies a real workspace write
   when ModelArk is not yet active.
+- A live free-quota ModelArk Run through the same Playground and Docker path
+  creates a TypeScript CLI and test while reporting bounded usage evidence.
 - Restart-interrupted Runs remain `cancelled` and gain truthful
   `server_restart` evidence.
 - A failed Run can create one immutable, idempotent linked retry from the same
@@ -35,6 +37,10 @@ store, disposable Runtime containers, or ModelArk integration.
 ### One-page architecture
 
 ![Agent Black Box architecture showing the trusted control plane, disposable Runtime, redaction boundary, storage, and linked retry](docs/assets/agent-black-box-architecture.svg)
+
+### Live ModelArk Run
+
+![Agent Black Box showing a completed free-quota ModelArk Run and its observable command timeline](docs/assets/agent-black-box-modelark.png)
 
 ### Agent Black Box timeline
 
@@ -319,7 +325,7 @@ the trace payload.
 
 | Track 1 category | Evidence |
 | --- | --- |
-| End-to-end behaviour (40%) | A visible Playground task, successful workspace action, controlled failure, and linked recovery through the real backend/Runtime path and timeline UI. |
+| End-to-end behaviour (40%) | A live ModelArk Playground Run, credential-free workspace proof, controlled failure, and linked recovery through the real backend/Runtime path and timeline UI. |
 | Design and integration (25%) | Shared Runner adapter, server-owned recorder/redactor, additive version-1 storage compatibility, no replacement platform. |
 | Verification and robustness (20%) | Parser, redaction, sequence, cap, historical data, restart, API, concurrency, and fixture tests. |
 | Demo and reproducibility (15%) | One-command local POC, fixed failure proof, Run history, architecture diagram, and documented three-minute path. |
@@ -349,8 +355,10 @@ the trace payload.
 - A controlled failure proves middleware behaviour but is not represented as a
   real provider outage.
 - The credential-free Playground task proves Runtime/file/recovery behaviour but is not
-  represented as model inference. Switch to the preferred free-quota model once
-  it is active.
+  represented as model inference.
+- The live `seed-2-0-lite-260428` verification completed successfully, but the
+  pinned Codex version emitted a non-fatal fallback-metadata warning for that
+  newer model. The warning remains visible in the trace.
 
 ## Team contribution
 
@@ -374,6 +382,7 @@ npm audit --omit=dev
 - [Architecture](docs/ARCHITECTURE.md)
 - [One-page architecture diagram](docs/ARCHITECTURE_DIAGRAM.md)
 - [Agent Black Box design](docs/AGENT_BLACK_BOX.md)
+- [Live ModelArk verification and usage](docs/MODELARK_LIVE_VERIFICATION.md)
 - [Three-minute demo script](docs/DEMO_SCRIPT.md)
 - [Demo narration](docs/DEMO_NARRATION.txt)
 - [YouTube upload metadata](docs/YOUTUBE_METADATA.md)

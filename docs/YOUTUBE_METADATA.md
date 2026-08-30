@@ -19,6 +19,10 @@ server-side redaction, and recovers through a linked retry from the persisted
 workspace. The proof paths use the same Runner, parser, store, API, polling,
 and timeline components as ordinary Runs and do not use model inference.
 
+The repository also includes a separately verified live free-quota ModelArk
+Run, its usage ledger, and the trace evidence that distinguishes an
+intermediate failed command from the model's optimistic final summary.
+
 Repository: https://github.com/thisisaditya17/CodeJam
 
 Chapters:

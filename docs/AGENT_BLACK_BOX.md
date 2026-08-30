@@ -106,6 +106,21 @@ failure retries select the credential-free success Runtime; real model retries
 reuse a thread only when it existed before the failed attempt. Every retry
 reuses the persisted workspace and exposes its actual recovery mode.
 
+## Live ModelArk verification
+
+The preserved model-backed path was verified with the enabled free-quota
+`seed-2-0-lite-260428` model. A task sent through the existing Playground ran
+inside the disposable Docker Runtime, created a TypeScript CLI and test, emitted
+18 observable events, reported usage, and completed in 27 seconds. The Run used
+39,741 input tokens, including 14,704 cached tokens, and 1,209 output tokens.
+
+The trace also demonstrates why the evidence boundary matters. The model's test
+command failed, the model corrected the import without rerunning the test, and
+its final message nevertheless claimed success. The failed command remains in
+the trace. A separate zero-inference verifier confirmed the corrected files
+pass; that later check is documented separately rather than rewritten into the
+original Run history.
+
 ## Security and operational limitations
 
 - The store serializes writes and supports one process.
