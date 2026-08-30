@@ -44,6 +44,11 @@ The project includes two reproducible Runtime proofs:
 - a controlled failure that exits non-zero and proves that a canary never
   reaches the trace API or UI.
 
+The preserved model path was also verified live with the enabled free-quota
+`seed-2-0-lite-260428` model. From the existing Playground and disposable
+Docker Runtime, one Run created a TypeScript CLI and test, reported model usage,
+and completed in 27 seconds.
+
 An operator can create a linked retry from an unsuccessful Run. Retry creates a
 new immutable attempt, reuses the persisted workspace, records the actual
 workspace/thread recovery mode, prevents duplicate requests with a UUID
@@ -99,6 +104,13 @@ does not use an LLM.
 - The credential-free recovery proof starts from the Playground composer,
   persists the human task, and performs a real file action with zero model
   tokens.
+- The live ModelArk Run reported 39,741 input tokens, including 14,704 cached
+  tokens, and 1,209 output tokens. Together with the 46-token activation probe,
+  verification used 40,996 of the 500,000 free tokens.
+- The live trace exposed an intermediate failed test command that the model's
+  final summary omitted. A zero-inference post-Run verifier confirmed the
+  corrected files pass, demonstrating why observable evidence is more
+  trustworthy than a terminal summary alone.
 - Forty-six automated tests pass, the production build succeeds, and the
   production dependency audit reports zero vulnerabilities.
 - A fresh clone of the public default branch passes typechecking, all 46 tests,
@@ -115,7 +127,8 @@ effect.
 
 ## What's next
 
-- Use Dola-Seed-2.0-Code once it becomes active under Free Credits Only Mode.
+- Add pinned metadata for newly released ModelArk identifiers so the Runtime
+  does not need Codex's fallback model metadata.
 - Add safe model/tool provider adapters without changing the trace contract.
 - Add export and retention controls for larger single-process deployments.
 - Evaluate an external append-only backend while preserving the local POC path.
@@ -151,6 +164,8 @@ effect.
   guarantee.
 - Credential-free proof Runs demonstrate Runtime, file, trace, and recovery
   behaviour rather than model intelligence.
+- The pinned Codex version reports a non-fatal model-metadata fallback warning
+  for `seed-2-0-lite-260428`; the warning is retained in the trace.
 - Retrying arbitrary external side effects is not production-safe.
 
 ## Team contribution

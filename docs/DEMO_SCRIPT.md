@@ -114,3 +114,12 @@ Return to the completed linked retry.
   account identifiers.
 - Do not use third-party logos, music, or copyrighted footage.
 - Upload as a public YouTube video and verify playback in a signed-out window.
+
+## Optional live-model evidence
+
+When the free-quota model is active, select the persisted `Live Model Builder`
+Run and show its `codex.usage_reported` details. Point out that the trace keeps
+the intermediate failed test command even though the model's final message
+claimed success. Do not rerun the model task solely for the demo; use the
+persisted Run and the zero-inference verifier recorded in
+`MODELARK_LIVE_VERIFICATION.md`.
