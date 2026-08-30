@@ -1,7 +1,7 @@
 import { access, readFile, writeFile } from "node:fs/promises";
 
 const fileName = "recovery-proof.txt";
-const expected = "Agent Black Box credential-free success proof\n";
+const expected = "Agent Black Box recovery succeeded\n";
 let existed = true;
 try {
   await access(fileName);

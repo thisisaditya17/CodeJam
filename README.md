@@ -23,7 +23,7 @@ store, disposable Runtime containers, or ModelArk integration.
 - Trace strings and failure messages are bounded and centrally redacted.
 - A controlled process/container failure traverses the same Runner, parser,
   persistence, API, and UI path as normal execution.
-- A credential-free success proof performs and verifies a real workspace write
+- A fixed, visible Playground task performs and verifies a real workspace write
   when ModelArk is not yet active.
 - Restart-interrupted Runs remain `cancelled` and gain truthful
   `server_restart` evidence.
@@ -31,6 +31,10 @@ store, disposable Runtime containers, or ModelArk integration.
   persisted workspace.
 
 ## Screenshots
+
+### One-page architecture
+
+![Agent Black Box architecture showing the trusted control plane, disposable Runtime, redaction boundary, storage, and linked retry](docs/assets/agent-black-box-architecture.svg)
 
 ### Agent Black Box timeline
 
@@ -54,7 +58,7 @@ store, disposable Runtime containers, or ModelArk integration.
 - Central trace redaction, typed metadata, deduplication, and bounded storage
 - Run history with failure-boundary highlighting
 - Reproducible controlled Runtime failure proof
-- Credential-free success proof with a verified workspace file change
+- Credential-free Playground task with a verified workspace file change
 - Linked retry with idempotency, immutable attempt history, and explicit
   workspace/thread recovery mode
 - Persistent Agent workspaces and Codex sessions
@@ -144,10 +148,13 @@ credential.
 
 ### Run without an active model
 
-Select **Run credential-free success proof**. The disposable Runtime writes and
-reads back `recovery-proof.txt`, emits the pinned command/file/usage protocol,
-and completes with zero model tokens. This is labelled as Runtime proof rather
-than represented as model inference.
+Select the green **Create and verify a workspace file with the local Runtime
+proof** prompt in the Playground, then press **Send**. The fixed task remains
+visible as the human message. The disposable Runtime writes and reads back
+`recovery-proof.txt`, verifies the requested content, emits the pinned
+command/file/usage protocol, and completes with zero model tokens. Arbitrary
+prompts cannot select this execution mode. It is labelled as Runtime proof
+rather than represented as model inference.
 
 After a controlled failure, select **Retry from persisted workspace**. The
 server creates one immutable attempt 2. Repeating the same idempotency request
@@ -274,7 +281,7 @@ flowchart LR
     API <--> Service["AgentService"]
     Service --> Runner{"AgentRunner"}
     Runner -->|normal| Codex["Pinned Codex CLI Runtime"]
-    Runner -->|controlled proof| Fixture["Credential-free failure process"]
+    Runner -->|controlled proofs| Fixture["Real file action / controlled failure"]
     Codex --> Ark["ModelArk Responses API"]
     Codex -- JSONL --> Adapter["Allowlisted event adapter"]
     Fixture -- JSONL --> Adapter
@@ -291,11 +298,14 @@ Run metadata and traces.
 
 See [Agent Black Box architecture and contracts](docs/AGENT_BLACK_BOX.md) for
 the trust boundary, event contract, redaction scope, and failure model.
+The [standalone one-page diagram](docs/ARCHITECTURE_DIAGRAM.md) is the concise
+submission artifact.
 
 ## Trace API
 
 ```text
 GET  /api/runs/:id/trace
+POST /api/agents/:id/messages   { "content": "fixed task", "executionMode": "workspace_proof" }
 POST /api/agents/:id/demo-runs  { "fixture": "runtime_nonzero" }
 POST /api/agents/:id/demo-runs  { "fixture": "runtime_success" }
 POST /api/runs/:id/retries      { "idempotencyKey": "UUID" }
@@ -309,7 +319,7 @@ the trace payload.
 
 | Track 1 category | Evidence |
 | --- | --- |
-| End-to-end behaviour (40%) | Successful workspace action, controlled failure, and linked recovery through the real backend/Runtime path and timeline UI. |
+| End-to-end behaviour (40%) | A visible Playground task, successful workspace action, controlled failure, and linked recovery through the real backend/Runtime path and timeline UI. |
 | Design and integration (25%) | Shared Runner adapter, server-owned recorder/redactor, additive version-1 storage compatibility, no replacement platform. |
 | Verification and robustness (20%) | Parser, redaction, sequence, cap, historical data, restart, API, concurrency, and fixture tests. |
 | Demo and reproducibility (15%) | One-command local POC, fixed failure proof, Run history, architecture diagram, and documented three-minute path. |
@@ -318,8 +328,8 @@ the trace payload.
 
 1. **0:00-0:15** - Explain why a terminal `failed` status is insufficient.
 2. **0:15-0:30** - Show the architecture and truthful evidence boundary.
-3. **0:30-1:15** - Run a real task and show commands, file changes, duration,
-   usage, and completion.
+3. **0:30-1:15** - Select the local proof task in the Playground, press Send,
+   and show commands, file changes, duration, zero-token usage, and completion.
 4. **1:15-2:05** - Trigger the controlled failure and show the causal chain,
    exit code, failure boundary, and redacted canary.
 5. **2:05-2:40** - Retry from the persisted workspace and navigate between the
@@ -338,7 +348,7 @@ the trace payload.
 - Local disposable containers are the supported judging path; ECS is optional.
 - A controlled failure proves middleware behaviour but is not represented as a
   real provider outage.
-- Credential-free success proves Runtime/file/recovery behaviour but is not
+- The credential-free Playground task proves Runtime/file/recovery behaviour but is not
   represented as model inference. Switch to the preferred free-quota model once
   it is active.
 
@@ -362,6 +372,7 @@ npm audit --omit=dev
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [One-page architecture diagram](docs/ARCHITECTURE_DIAGRAM.md)
 - [Agent Black Box design](docs/AGENT_BLACK_BOX.md)
 - [Three-minute demo script](docs/DEMO_SCRIPT.md)
 - [Demo narration](docs/DEMO_NARRATION.txt)

@@ -4,40 +4,34 @@
 
 1. Run `npm ci && npm run check` and leave the passing summary visible in a terminal tab.
 2. Start the application with a disposable local state directory.
-3. Create an Agent named `Recovery Builder` with the description
-   `Diagnosable workspace automation`.
-4. Append `?autofollow=1` to the local URL when API calls will drive the
-   recording. This view follows real Runs and traces; it does not create or
-   fabricate events.
-5. Keep the Playground and Black Box panel visible at a 1280 x 720 viewport.
+3. Begin from the empty frontend so Agent creation is visible.
+4. Keep the Playground and Black Box panel visible at a 1280 x 720 viewport.
 
 ## Script
 
-### 0:00-0:15 - Problem
+### 0:00-0:28 - Problem, architecture, and evidence boundary
+
+Show `docs/ARCHITECTURE_DIAGRAM.md`.
 
 **Narration:**
 
-> Agent platforms often tell operators only that a Run failed. That is not
-> enough to understand what happened, what was actually observed, or whether
-> recovery is safe. Agent Black Box turns each Run into bounded, redacted,
-> correlated evidence.
-
-Show the Agent Black Box title and empty timeline.
-
-### 0:15-0:30 - Architecture and evidence boundary
-
-Show the architecture diagram in `docs/AGENT_BLACK_BOX.md`.
-
-**Narration:**
-
+> Agent platforms often stop at completed or failed. Agent Black Box turns
+> each observable Run into bounded, redacted, correlated evidence.
+>
 > The existing React, Fastify, JSON-store, workspace, and Runtime lifecycle are
 > preserved. Observable JSONL enters one allowlisted adapter, then one redaction
 > and bounds layer, before deterministic sequence assignment and persistence.
 > Hidden reasoning and raw command output are deliberately excluded.
 
-### 0:30-1:05 - Successful workspace action
+### 0:28-0:47 - Create the Agent and select the task
 
-Select **Run credential-free success proof**.
+Return to the empty frontend. Select **Create your first Agent**, enter
+`Recovery Builder` and `Diagnosable workspace automation`, then create it.
+
+### 0:47-1:08 - Playground workspace action
+
+Select the green **Create and verify a workspace file with the local Runtime
+proof** prompt, then press **Send** in the Playground.
 
 Show these events appearing:
 
@@ -52,12 +46,12 @@ Expand the file-change details.
 
 **Narration:**
 
-> This is not a static success message. The Runtime writes the file, reads it
-> back, verifies the exact content, and emits the pinned event protocol. The
-> complete path uses zero model tokens and remains reproducible without a
-> credential.
+> The task is visibly invoked through the existing Playground. This is not a
+> static success message: the Runtime writes the requested file, reads it back,
+> verifies the exact content, and emits the pinned event protocol. The complete
+> path uses zero model tokens and is labelled as a local Runtime proof.
 
-### 1:05-1:45 - Controlled failure and redaction
+### 1:08-1:28 - Controlled failure and redaction
 
 Select **Run controlled failure proof**.
 
@@ -76,7 +70,7 @@ Show:
 > but neither the trace API nor browser receives its value. Diagnosis is
 > deterministic: the command failed first, and the Runtime exited non-zero.
 
-### 1:45-2:25 - Immutable linked retry
+### 1:28-1:50 - Immutable linked retry
 
 Select **Retry from persisted workspace**.
 
@@ -91,10 +85,10 @@ attempts 1 and 2, then use **View linked attempt 2**.
 > and the actual recovery mode in a serialized mutation. Both attempts remain
 > inspectable and share the persisted workspace.
 
-### 2:25-2:45 - Robustness evidence
+### 1:50-2:00 - Robustness evidence
 
-Show the terminal with `45 tests passed`, the zero-vulnerability audit, and the
-clean-clone result.
+Keep the completed retry visible while citing the validation results recorded
+in the repository.
 
 **Narration:**
 
@@ -103,7 +97,7 @@ clean-clone result.
 > API validation, duplicate retry, busy-Agent rejection, and both Runtime
 > command constructions.
 
-### 2:45-3:00 - Close
+### 2:00-2:05 - Close
 
 Return to the completed linked retry.
 

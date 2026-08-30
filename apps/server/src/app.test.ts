@@ -49,6 +49,7 @@ describe("HTTP boundary", () => {
   it("exposes validated trace and controlled-failure routes", async () => {
     const runId = "11111111-1111-4111-8111-111111111111";
     const agentId = "22222222-2222-4222-8222-222222222222";
+    const messageRequests: Array<{ content: string; executionMode: string }> = [];
     const boundaryService = {
       ...service,
       getTrace: (id: string) => ({
@@ -58,6 +59,13 @@ describe("HTTP boundary", () => {
         events: [],
       }),
       startDemoRun: async (id: string) => ({ run: { id: runId, agentId: id } }),
+      sendMessage: async (id: string, content: string, executionMode: string) => {
+        messageRequests.push({ content, executionMode });
+        return {
+          run: { id: runId, agentId: id },
+          message: { id: "message-id", agentId: id, content },
+        };
+      },
       retryRun: async () => ({ run: { id: runId, agentId } }),
     } as unknown as AgentService;
     const app = await createApp(loadConfig({ NODE_ENV: "test" }), boundaryService);
@@ -87,6 +95,23 @@ describe("HTTP boundary", () => {
       payload: { fixture: "runtime_success" },
     });
     expect(success.statusCode).toBe(202);
+
+    const playgroundProof = await app.inject({
+      method: "POST",
+      url: "/api/agents/" + agentId + "/messages",
+      payload: { content: "fixed visible task", executionMode: "workspace_proof" },
+    });
+    expect(playgroundProof.statusCode).toBe(202);
+    expect(messageRequests).toEqual([
+      { content: "fixed visible task", executionMode: "workspace_proof" },
+    ]);
+
+    const invalidExecutionMode = await app.inject({
+      method: "POST",
+      url: "/api/agents/" + agentId + "/messages",
+      payload: { content: "fixed visible task", executionMode: "arbitrary" },
+    });
+    expect(invalidExecutionMode.statusCode).toBe(400);
 
     const invalidRetry = await app.inject({
       method: "POST",

@@ -12,21 +12,23 @@ Runtime lifecycle, commands, file changes, duration, usage, explicit failure
 boundaries, and immutable linked retries without exposing hidden reasoning or
 raw command output.
 
-This demonstration shows a real credential-free workspace action, a controlled
-non-zero Runtime failure with server-side redaction, and a successful retry
-from the persisted workspace. The proof paths use the same Runner, parser,
-store, API, polling, and timeline components as ordinary Runs and do not use
-model inference.
+This demonstration creates an Agent in the existing frontend, sends a fixed
+credential-free workspace task through the Playground, shows the resulting
+observable timeline, triggers a controlled non-zero Runtime failure with
+server-side redaction, and recovers through a linked retry from the persisted
+workspace. The proof paths use the same Runner, parser, store, API, polling,
+and timeline components as ordinary Runs and do not use model inference.
 
 Repository: https://github.com/thisisaditya17/CodeJam
 
 Chapters:
 
-0:00 Problem and truthful evidence boundary
-0:15 Verified workspace success
-0:33 Controlled failure and redaction
-0:51 Linked retry from persisted state
-1:18 Verification and conclusion
+0:00 Problem, architecture, and truthful boundary
+0:28 Frontend Agent creation and Playground task
+0:47 Verified workspace success
+1:08 Controlled failure and redaction
+1:28 Linked retry and immutable history
+1:40 Verification and conclusion
 
 TikTok TechJam 2026 — Track 1: Agent Launchpad
 

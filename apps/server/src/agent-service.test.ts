@@ -2,7 +2,10 @@ import { mkdtemp } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { AgentService } from "./agent-service.js";
+import {
+  AgentService,
+  PLAYGROUND_WORKSPACE_PROOF_PROMPT,
+} from "./agent-service.js";
 import { loadConfig } from "./config.js";
 import { RunCancelledError, RunExecutionError } from "./errors.js";
 import { JsonStore } from "./store.js";
@@ -51,17 +54,23 @@ afterEach(async () => {
   );
 });
 
-async function makeService(runner: AgentRunner = new FakeRunner()): Promise<AgentService> {
+async function makeService(
+  runner: AgentRunner = new FakeRunner(),
+  arkConfigured = true,
+): Promise<AgentService> {
   const root = await mkdtemp(path.join(tmpdir(), "launchpad-test-"));
   temporaryDirectories.push(root);
-  const config = loadConfig({
+  const environment: NodeJS.ProcessEnv = {
     NODE_ENV: "test",
     APP_DATA_DIR: path.join(root, "data"),
     AGENT_WORKSPACE_ROOT: path.join(root, "workspaces"),
     CODEX_HOME: path.join(root, "codex"),
-    ARK_API_KEY: "test-key",
-    ARK_MODEL: "ep-test",
-  });
+  };
+  if (arkConfigured) {
+    environment.ARK_API_KEY = "test-key";
+    environment.ARK_MODEL = "ep-test";
+  }
+  const config = loadConfig(environment);
   const service = new AgentService(
     config,
     new JsonStore(path.join(root, "data", "db.json")),
@@ -103,6 +112,52 @@ describe("Agent lifecycle", () => {
       "runtime.completed",
       "run.completed",
     ]);
+  });
+
+  it("runs the fixed workspace proof from the Playground without Ark", async () => {
+    let captured: RunnerRequest | null = null;
+    const service = await makeService(
+      {
+        run: async (request) => {
+          captured = request;
+          return {
+            output: "Created and verified recovery-proof.txt through the local Runtime proof.",
+            threadId: "fixture-thread",
+            usage: { inputTokens: 0, outputTokens: 0 },
+          };
+        },
+        cancel: async () => false,
+        isAvailable: async () => true,
+      },
+      false,
+    );
+    const agent = await service.createAgent({ name: "Offline proof" });
+    const { run } = await service.sendMessage(
+      agent.id,
+      PLAYGROUND_WORKSPACE_PROOF_PROMPT,
+      "workspace_proof",
+    );
+    await expect.poll(() => service.getRun(run.id).status).toBe("completed");
+
+    expect(service.getRun(run.id)).toMatchObject({
+      prompt: PLAYGROUND_WORKSPACE_PROOF_PROMPT,
+      executionMode: "demo_runtime_success",
+      usage: { inputTokens: 0, outputTokens: 0 },
+    });
+    expect(captured).toMatchObject({
+      prompt: PLAYGROUND_WORKSPACE_PROOF_PROMPT,
+      executionMode: "demo_runtime_success",
+    });
+    expect(service.getMessages(agent.id).map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+    ]);
+    expect(service.getMessages(agent.id)[0]?.content).toBe(PLAYGROUND_WORKSPACE_PROOF_PROMPT);
+    expect(service.getAgent(agent.id).codexThreadId).toBeNull();
+
+    await expect(
+      service.sendMessage(agent.id, "an arbitrary task", "workspace_proof"),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it("records and redacts a controlled Runtime failure without creating a chat message", async () => {

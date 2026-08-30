@@ -2,10 +2,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, setAuthToken } from "./api";
 import type { Agent, AgentRun, Message, SystemInfo, TraceEvent } from "./types";
 
+const workspaceProofPrompt =
+  "Create recovery-proof.txt containing 'Agent Black Box recovery succeeded', confirm it exists, and summarize the result.";
+
 const starterPrompts = [
-  "Create a small TypeScript CLI that prints a weather summary from sample JSON.",
-  "Inspect this workspace and explain what you would improve first.",
-  "Build a responsive single-page todo app with tests.",
+  {
+    content: workspaceProofPrompt,
+    label: "Create and verify a workspace file with the local Runtime proof.",
+    mode: "workspace_proof" as const,
+  },
+  {
+    content: "Create a small TypeScript CLI that prints a weather summary from sample JSON.",
+    label: "Create a small TypeScript CLI that prints a weather summary from sample JSON.",
+    mode: "codex" as const,
+  },
+  {
+    content: "Inspect this workspace and explain what you would improve first.",
+    label: "Inspect this workspace and explain what you would improve first.",
+    mode: "codex" as const,
+  },
 ];
 
 const emptyForm = {
@@ -66,7 +81,7 @@ function TracePanel({
   busy: boolean;
   retryBusy: boolean;
   onSelectRun: (runId: string) => void;
-  onDemoRun: (fixture: "runtime_nonzero" | "runtime_success") => void;
+  onDemoRun: () => void;
   onRetry: (runId: string) => void;
 }) {
   const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
@@ -112,20 +127,12 @@ function TracePanel({
         </label>
         <div className="trace-proof-buttons">
           <button
-            className="button trace-success-button"
-            type="button"
-            onClick={() => onDemoRun("runtime_success")}
-            disabled={busy}
-          >
-            {busy ? <Spinner /> : "Run credential-free success proof"}
-          </button>
-          <button
             className="button trace-demo-button"
             type="button"
-            onClick={() => onDemoRun("runtime_nonzero")}
+            onClick={onDemoRun}
             disabled={busy}
           >
-            Run controlled failure proof
+            {busy ? <Spinner /> : "Run controlled failure proof"}
           </button>
         </div>
       </div>
@@ -222,6 +229,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [prompt, setPrompt] = useState("");
+  const [promptMode, setPromptMode] = useState<"codex" | "workspace_proof">("codex");
   const [activeRun, setActiveRun] = useState<AgentRun | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -320,44 +328,6 @@ export default function App() {
         setError(reason instanceof Error ? reason.message : String(reason)),
       );
   }, [refreshMessages, refreshRuns, refreshTrace, selectedId]);
-
-  useEffect(() => {
-    if (
-      !selectedId ||
-      !new URLSearchParams(window.location.search).has("autofollow")
-    ) {
-      return;
-    }
-    let disposed = false;
-    const followLatestRun = async () => {
-      try {
-        const nextRuns = await refreshRuns(selectedId);
-        const latest = nextRuns[0];
-        if (disposed || !latest || selectedIdRef.current !== selectedId) return;
-        setActiveRun(latest);
-        if (selectedTraceRunIdRef.current !== latest.id) {
-          selectedTraceRunIdRef.current = latest.id;
-          setSelectedTraceRunId(latest.id);
-          setTraceEvents([]);
-        }
-        await Promise.all([
-          refreshTrace(latest.id),
-          refreshMessages(selectedId),
-          refreshAgents(),
-        ]);
-      } catch (reason) {
-        if (!disposed) {
-          setError(reason instanceof Error ? reason.message : String(reason));
-        }
-      }
-    };
-    void followLatestRun();
-    const interval = window.setInterval(() => void followLatestRun(), 900);
-    return () => {
-      disposed = true;
-      window.clearInterval(interval);
-    };
-  }, [refreshAgents, refreshMessages, refreshRuns, refreshTrace, selectedId]);
 
   useEffect(() => {
     if (selected) {
@@ -480,10 +450,15 @@ export default function App() {
     event.preventDefault();
     if (!selected || !prompt.trim()) return;
     const content = prompt.trim();
+    const executionMode =
+      promptMode === "workspace_proof" && content === workspaceProofPrompt
+        ? "workspace_proof"
+        : "codex";
     setPrompt("");
+    setPromptMode("codex");
     setError(null);
     try {
-      const result = await api.sendMessage(selected.id, content);
+      const result = await api.sendMessage(selected.id, content, executionMode);
       if (selectedIdRef.current === selected.id) {
         setMessages((current) => [...current, result.message]);
         setActiveRun(result.run);
@@ -686,7 +661,7 @@ export default function App() {
               <strong>Runtime configuration needed</strong>
               <p>
                 {!system?.arkConfigured
-                  ? "Set ARK_API_KEY and ARK_MODEL in .env before using the Playground."
+                  ? "Set ARK_API_KEY and ARK_MODEL for model tasks. The fixed local Runtime proof remains available in the Playground."
                   : system.runtimeProvider === "container"
                     ? "The local container engine or Agent Runtime image is unavailable. Rerun npm run poc."
                     : "Codex CLI was not found. Use the Docker image or install @openai/codex."}
@@ -814,9 +789,16 @@ export default function App() {
                     </p>
                     <div className="prompt-grid">
                       {starterPrompts.map((item) => (
-                        <button key={item} onClick={() => setPrompt(item)}>
+                        <button
+                          className={item.mode === "workspace_proof" ? "prompt-proof" : undefined}
+                          key={item.content}
+                          onClick={() => {
+                            setPrompt(item.content);
+                            setPromptMode(item.mode);
+                          }}
+                        >
                           <span>↗</span>
-                          {item}
+                          {item.label}
                         </button>
                       ))}
                     </div>
@@ -840,7 +822,11 @@ export default function App() {
                     </div>
                     <div className="thinking-row">
                       <Spinner />
-                      Codex is reading, editing, or running commands…
+                      {activeRun.executionMode === "demo_runtime_success"
+                        ? "Local Runtime is writing and verifying the workspace file…"
+                        : activeRun.executionMode === "demo_runtime_failure"
+                          ? "Controlled Runtime failure is executing…"
+                          : "Codex is reading, editing, or running commands…"}
                     </div>
                   </article>
                 )}
@@ -856,7 +842,13 @@ export default function App() {
                   <form className="composer" onSubmit={sendMessage}>
                 <textarea
                   value={prompt}
-                  onChange={(event) => setPrompt(event.target.value)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setPrompt(value);
+                    setPromptMode(
+                      value.trim() === workspaceProofPrompt ? "workspace_proof" : "codex",
+                    );
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
@@ -876,8 +868,11 @@ export default function App() {
                   rows={3}
                 />
                 <div className="composer-footer">
-                  <span>
-                    Enter to send · Shift + Enter for newline · {system?.codexSandboxMode ?? "checking sandbox"}
+                  <span className={promptMode === "workspace_proof" ? "proof-mode" : undefined}>
+                    {promptMode === "workspace_proof"
+                      ? "Local Runtime proof selected · real workspace write · zero model tokens"
+                      : "Enter to send · Shift + Enter for newline · " +
+                        (system?.codexSandboxMode ?? "checking sandbox")}
                   </span>
                   <button
                     className="send-button"
@@ -902,7 +897,7 @@ export default function App() {
                   busy={demoBusy || selected.status === "busy"}
                   retryBusy={retryBusy}
                   onSelectRun={(runId) => void selectTraceRun(runId)}
-                  onDemoRun={(fixture) => void runProof(fixture)}
+                  onDemoRun={() => void runProof("runtime_nonzero")}
                   onRetry={(runId) => void retryRun(runId)}
                 />
               </div>
