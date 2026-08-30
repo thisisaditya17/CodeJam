@@ -39,7 +39,7 @@ and redaction layer before they reach storage, APIs, logs, or the browser.
 
 The project includes two reproducible Runtime proofs:
 
-- a credential-free success path that performs and verifies a real workspace
+- a fixed, visible Playground task that performs and verifies a real workspace
   file write with zero model tokens;
 - a controlled failure that exits non-zero and proves that a canary never
   reaches the trace API or UI.
@@ -96,11 +96,12 @@ does not use an LLM.
 - The controlled canary is absent from trace persistence, API responses, and UI.
 - Duplicate retry requests return one existing child attempt; different keys
   conflict.
-- The credential-free recovery proof performs a real file action with zero
-  model tokens.
-- Forty-five automated tests pass, the production build succeeds, and the
+- The credential-free recovery proof starts from the Playground composer,
+  persists the human task, and performs a real file action with zero model
+  tokens.
+- Forty-six automated tests pass, the production build succeeds, and the
   production dependency audit reports zero vulnerabilities.
-- A fresh clone of the public default branch passes typechecking, all 45 tests,
+- A fresh clone of the public default branch passes typechecking, all 46 tests,
   both production builds, the production dependency audit, and Docker Compose
   configuration validation.
 

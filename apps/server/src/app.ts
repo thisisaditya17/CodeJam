@@ -21,6 +21,7 @@ const updateAgentBody = createAgentBody.partial().refine(
 );
 const messageBody = z.object({
   content: z.string().trim().min(1).max(50_000),
+  executionMode: z.enum(["codex", "workspace_proof"]).default("codex"),
 });
 const demoRunBody = z.object({
   fixture: z.enum(["runtime_nonzero", "runtime_success"]),
@@ -123,7 +124,7 @@ export async function createApp(
   app.post("/api/agents/:id/messages", async (request, reply) => {
     const { id } = agentIdParams.parse(request.params);
     const body = messageBody.parse(request.body);
-    const result = await service.sendMessage(id, body.content);
+    const result = await service.sendMessage(id, body.content, body.executionMode);
     return reply.code(202).send(result);
   });
 

@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title description">
+  <title id="title">Agent Black Box architecture</title>
+  <desc id="description">One-page architecture showing the browser, trusted control plane, disposable Runtime, trace pipeline, storage, ModelArk boundary, redaction boundary, and linked retry.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8f7f3"/>
+      <stop offset="1" stop-color="#efecff"/>
+    </linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#765fe0"/>
+      <stop offset="1" stop-color="#513db9"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#55564f"/>
+    </marker>
+    <style>
+      .title { font: 700 42px ui-sans-serif, system-ui, sans-serif; fill: #20211f; }
+      .subtitle { font: 400 18px ui-sans-serif, system-ui, sans-serif; fill: #676861; }
+      .boundary-title { font: 700 17px ui-sans-serif, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+      .box-title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #262722; }
+      .box-copy { font: 400 14px ui-sans-serif, system-ui, sans-serif; fill: #666760; }
+      .small { font: 600 13px ui-sans-serif, system-ui, sans-serif; fill: #4e4f49; }
+      .flow { fill: none; stroke: #55564f; stroke-width: 3; marker-end: url(#arrow); }
+      .return-flow { fill: none; stroke: #6954d9; stroke-width: 3; stroke-dasharray: 8 7; marker-end: url(#arrow); }
+      .box { fill: #fff; stroke: #d8d6cf; stroke-width: 2; rx: 16; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#background)"/>
+  <text x="70" y="72" class="title">Agent Black Box</text>
+  <text x="70" y="108" class="subtitle">Truthful, bounded, redacted evidence for every observable Agent Run</text>
+
+  <rect x="55" y="145" width="1490" height="625" rx="28" fill="#ffffff" fill-opacity="0.6" stroke="#cbc6ef" stroke-width="3" stroke-dasharray="12 9"/>
+  <text x="82" y="178" class="boundary-title" fill="#5c48bd">Trusted control plane and trace boundary</text>
+
+  <rect x="80" y="225" width="210" height="120" class="box"/>
+  <text x="105" y="266" class="box-title">React Playground</text>
+  <text x="105" y="294" class="box-copy">Create/select Agent</text>
+  <text x="105" y="318" class="box-copy">Send task + inspect timeline</text>
+
+  <rect x="350" y="225" width="210" height="120" class="box"/>
+  <text x="375" y="266" class="box-title">Fastify API</text>
+  <text x="375" y="294" class="box-copy">Validation + auth boundary</text>
+  <text x="375" y="318" class="box-copy">Async Run and trace APIs</text>
+
+  <rect x="620" y="225" width="220" height="120" class="box"/>
+  <text x="645" y="266" class="box-title">AgentService</text>
+  <text x="645" y="294" class="box-copy">Lifecycle + correlation</text>
+  <text x="645" y="318" class="box-copy">Failure + retry ownership</text>
+
+  <path d="M290 285 H350" class="flow"/>
+  <path d="M560 285 H620" class="flow"/>
+
+  <rect x="900" y="195" width="590" height="250" rx="24" fill="#f1f8f4" stroke="#7db898" stroke-width="3" stroke-dasharray="11 8"/>
+  <text x="925" y="228" class="boundary-title" fill="#247150">Disposable Runtime boundary</text>
+
+  <rect x="930" y="260" width="210" height="130" class="box"/>
+  <text x="955" y="300" class="box-title">AgentRunner</text>
+  <text x="955" y="328" class="box-copy">Docker / local process</text>
+  <text x="955" y="352" class="box-copy">Timeout, cancel, exit limits</text>
+  <text x="955" y="376" class="box-copy">Scoped workspace mount</text>
+
+  <rect x="1215" y="250" width="235" height="75" class="box"/>
+  <text x="1240" y="283" class="box-title">Codex CLI 0.111.0</text>
+  <text x="1240" y="306" class="box-copy">Normal model-backed Run</text>
+
+  <rect x="1215" y="345" width="235" height="75" class="box"/>
+  <text x="1240" y="378" class="box-title">Controlled proofs</text>
+  <text x="1240" y="401" class="box-copy">Real file action / exit 17</text>
+
+  <path d="M840 285 H930" class="flow"/>
+  <path d="M1140 302 H1215" class="flow"/>
+  <path d="M1140 350 C1170 350 1178 382 1215 382" class="flow"/>
+
+  <rect x="1215" y="475" width="235" height="80" class="box"/>
+  <text x="1240" y="510" class="box-title">ModelArk API</text>
+  <text x="1240" y="534" class="box-copy">Key forwarded only for model Runs</text>
+  <path d="M1450 287 C1490 287 1490 515 1450 515" class="flow"/>
+
+  <rect x="620" y="500" width="220" height="125" class="box"/>
+  <text x="645" y="540" class="box-title">JSONL adapter</text>
+  <text x="645" y="568" class="box-copy">Allowlisted observable events</text>
+  <text x="645" y="592" class="box-copy">No reasoning or raw output</text>
+
+  <rect x="350" y="500" width="210" height="125" class="box"/>
+  <text x="375" y="540" class="box-title">Redactor + recorder</text>
+  <text x="375" y="568" class="box-copy">Bound, redact, dedupe</text>
+  <text x="375" y="592" class="box-copy">Assign deterministic sequence</text>
+
+  <rect x="80" y="500" width="210" height="125" class="box"/>
+  <text x="105" y="540" class="box-title">JSON store</text>
+  <text x="105" y="568" class="box-copy">Runs + trace events</text>
+  <text x="105" y="592" class="box-copy">Persistent workspaces</text>
+
+  <path d="M930 390 C900 470 875 562 840 562" class="flow"/>
+  <path d="M620 562 H560" class="flow"/>
+  <path d="M350 562 H290" class="flow"/>
+  <path d="M185 500 C185 430 455 430 455 345" class="return-flow"/>
+  <path d="M185 500 C105 455 105 390 185 345" class="return-flow"/>
+
+  <rect x="900" y="615" width="550" height="95" rx="16" fill="#fff7dd" stroke="#dfc870" stroke-width="2"/>
+  <text x="925" y="650" class="box-title">Immutable linked retry</text>
+  <text x="925" y="678" class="box-copy">New Run ID · same persisted workspace · explicit recovery mode</text>
+  <path d="M900 662 C830 662 730 620 730 345" class="return-flow"/>
+
+  <rect x="70" y="805" width="1460" height="55" rx="14" fill="url(#purple)"/>
+  <text x="100" y="838" font-family="ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="650" fill="#fff">Normal: Playground → Runtime action → sanitized trace → UI</text>
+  <text x="875" y="838" font-family="ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="650" fill="#fff">Failure: exit 17 → [REDACTED] → linked recovery</text>
+</svg>

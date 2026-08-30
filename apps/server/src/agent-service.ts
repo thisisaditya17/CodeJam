@@ -22,9 +22,10 @@ import type {
 import { WorkspaceManager } from "./workspace.js";
 
 const now = () => new Date().toISOString();
-const DEMO_RECOVERY_PROMPT =
+export const PLAYGROUND_WORKSPACE_PROOF_PROMPT =
   "Create recovery-proof.txt containing 'Agent Black Box recovery succeeded', confirm it exists, and summarize the result.";
 type DemoFixture = "runtime_nonzero" | "runtime_success";
+type PlaygroundExecutionMode = "codex" | "workspace_proof";
 
 interface CreateRunOptions {
   executionMode: RunnerExecutionMode;
@@ -197,15 +198,19 @@ export class AgentService {
   async sendMessage(
     agentId: string,
     prompt: string,
+    mode: PlaygroundExecutionMode = "codex",
   ): Promise<{ run: AgentRun; message: Message }> {
-    if (!isArkConfigured(this.config)) {
+    if (mode === "codex" && !isArkConfigured(this.config)) {
       throw new HttpError(
         503,
         "Ark is not configured. Set ARK_API_KEY and ARK_MODEL, then restart.",
       );
     }
+    if (mode === "workspace_proof" && prompt !== PLAYGROUND_WORKSPACE_PROOF_PROMPT) {
+      throw new HttpError(400, "The workspace proof accepts only its fixed, visible task");
+    }
     const result = await this.createRun(agentId, prompt, {
-      executionMode: "codex",
+      executionMode: mode === "workspace_proof" ? "demo_runtime_success" : "codex",
       recordUserMessage: true,
     });
     if (!result.message) throw new Error("User message was not created");
@@ -213,7 +218,7 @@ export class AgentService {
   }
 
   async startDemoRun(agentId: string, fixture: DemoFixture): Promise<{ run: AgentRun }> {
-    const result = await this.createRun(agentId, DEMO_RECOVERY_PROMPT, {
+    const result = await this.createRun(agentId, PLAYGROUND_WORKSPACE_PROOF_PROMPT, {
       executionMode:
         fixture === "runtime_success" ? "demo_runtime_success" : "demo_runtime_failure",
       recordUserMessage: false,
@@ -283,7 +288,9 @@ export class AgentService {
           options.executionMode === "demo_runtime_failure"
             ? "Controlled failure proof queued."
             : options.executionMode === "demo_runtime_success"
-              ? "Credential-free success proof queued."
+              ? options.recordUserMessage
+                ? "Playground workspace proof queued."
+                : "Credential-free success proof queued."
               : "Agent Run queued.",
         metadata: {
           provider: this.config.runtimeProvider,

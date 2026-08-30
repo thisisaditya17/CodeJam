@@ -1,15 +1,13 @@
-Agent platforms often tell operators only that a Run failed. Agent Black Box turns that final status into bounded, redacted, correlated evidence, while staying honest about what the platform can actually observe.
+Agent platforms often stop at completed or failed. Agent Black Box turns each observable Run into bounded, redacted, correlated evidence, so an operator can see what happened and where it stopped without exposing hidden reasoning.
 
-The existing Playground, control plane, workspace, JSON store, and Runtime lifecycle remain intact. Observable events pass through one allowlisted adapter and one redaction boundary before deterministic sequence assignment and persistence. Hidden reasoning and raw command output are deliberately excluded.
+The existing Playground, Fastify control plane, JSON store, workspace, and Runtime lifecycle remain intact. Observable events cross one allowlisted adapter and one redaction boundary before deterministic sequence assignment and persistence. Raw command output and hidden reasoning are deliberately excluded.
 
-First, here is the credential-free success proof. This is not a static success message and it is not represented as model inference. The Runtime writes recovery-proof dot text inside the Agent workspace, reads it back, verifies the exact content, and emits real command, file-change, usage, and terminal evidence. The Run completes with zero model tokens.
+I create Recovery Builder in the existing frontend, select the fixed local Runtime task in the Playground, and press Send. The human task remains visible. The Docker Runtime writes recovery-proof dot text, reads it back, verifies the requested content, and emits real command, file-change, usage, and terminal evidence. This is a real workspace action with zero model tokens, not a static success message or model-inference claim.
 
-Next is the controlled failure. It travels through the same process or container boundary, parser, store, API, polling loop, and timeline. The command fails first, the Runtime exits with code seventeen, and the final boundary is classified deterministically. A safe canary exists in the source event, but only the redacted marker reaches storage and the browser.
+Next is the controlled failure. It travels through the same container, parser, store, API, polling, and timeline path. The command fails first, the Runtime exits with code seventeen, and the final boundary is classified deterministically. A safe canary exists only in the source event; the trace store, API, and browser receive the redacted marker.
 
-Recovery never rewrites failure into success. Selecting retry creates a new immutable attempt from the persisted workspace. The server enforces one direct child, a UUID idempotency key, Agent availability, and the actual recovery mode in one serialized mutation.
+Retry never rewrites failure into success. It creates a new immutable attempt from the persisted workspace, records workspace-only recovery, enforces UUID idempotency and one direct child, and keeps both attempts navigable. The original failure remains inspectable while attempt two completes the real file action.
 
-Attempt one remains failed and inspectable. Attempt two completes the real workspace action. Repeating the same retry request returns the existing attempt instead of creating another Run.
-
-The project includes forty-five automated tests covering redaction, malformed events, bounded storage, historical data, restart interruption, failure boundaries, API validation, concurrency, duplicate retry, and both Runtime providers. A clean clone builds successfully and the production dependency audit reports zero vulnerabilities.
+Forty-six automated tests cover the Playground proof boundary, redaction, malformed events, bounded storage, historical data, restart interruption, failure classification, concurrency, duplicate retry, and both Runtime providers. The clean-clone build passes and the production dependency audit reports zero vulnerabilities.
 
 Agent Black Box makes Agent infrastructure understandable without pretending to observe what it cannot. Every Run tells the truth.

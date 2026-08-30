@@ -728,13 +728,6 @@ textarea:focus {
   gap: 7px;
 }
 
-.trace-success-button {
-  min-height: 34px;
-  color: #267454;
-  background: #e2f2e9;
-  border: 1px solid #c8e5d8;
-}
-
 .redaction-badge {
   margin: 10px 14px 0;
   padding: 8px 9px;
@@ -1028,6 +1021,17 @@ textarea:focus {
   box-shadow: 0 8px 20px rgba(57, 48, 103, 0.08);
 }
 
+.prompt-grid .prompt-proof {
+  border-color: #c7dfd3;
+  color: #315e4c;
+  background: #eef8f2;
+}
+
+.prompt-grid .prompt-proof:hover {
+  border-color: #82bea1;
+  background: #f7fcf9;
+}
+
 .prompt-grid span {
   display: block;
   color: var(--purple);
@@ -1144,6 +1148,11 @@ textarea:focus {
 .composer-footer > span {
   color: #999992;
   font-size: 8px;
+}
+
+.composer-footer > .proof-mode {
+  color: #277152;
+  font-weight: 700;
 }
 
 .send-button {

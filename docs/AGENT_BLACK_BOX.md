@@ -87,13 +87,16 @@ the same parser, recorder, JSON store, API, polling, and timeline as a normal
 Run. This makes the negative case deterministic without fabricating a success
 or relying on a transient external outage.
 
-## Credential-free success and linked recovery
+## Credential-free Playground task and linked recovery
 
 When ModelArk is unavailable, the success fixture performs a real write and
 read-back verification of `recovery-proof.txt` inside the selected Agent
 workspace. It emits command, file-change, usage, and terminal JSONL evidence
-with zero model tokens. The UI and documentation identify it as a Runtime proof,
-not model inference.
+with zero model tokens. A user selects its fixed, visible task in the existing
+Playground and presses Send, so the normal user-message, Run, Runtime, trace,
+and assistant-message lifecycle remains observable. The backend accepts only
+that exact task for this proof mode. The UI and documentation identify it as a
+Runtime proof, not model inference.
 
 A retry is a new immutable Run. The server validates the unsuccessful source,
 Agent availability, and one direct child per source inside a serialized store
