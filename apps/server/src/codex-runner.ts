@@ -1,8 +1,17 @@
-import { execFile } from "node:child_process";
-import { spawn, type ChildProcess } from "node:child_process";
+import {
+  execFile,
+  spawn,
+  type ChildProcess,
+  type ChildProcessByStdio,
+} from "node:child_process";
+import { createHash } from "node:crypto";
+import { lstat } from "node:fs/promises";
+import path from "node:path";
+import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { AppConfig } from "./config.js";
+import { writeCodexConfig } from "./config.js";
 import { RunCancelledError, RunExecutionError } from "./errors.js";
 import type {
   AgentRunner,
@@ -15,6 +24,25 @@ import type {
 } from "./types.js";
 
 const execFileAsync = promisify(execFile);
+
+export async function resolveRunCodexHome(
+  config: AppConfig,
+  request: Pick<RunnerRequest, "agentId" | "threadId">,
+): Promise<string> {
+  const agentDirectory = createHash("sha256").update(request.agentId).digest("hex");
+  const scopedHome = path.join(config.codexHome, "agents", agentDirectory);
+  try {
+    const scopedStat = await lstat(scopedHome);
+    if (!scopedStat.isDirectory() || scopedStat.isSymbolicLink()) {
+      throw new Error("Per-Agent CODEX_HOME must be a real directory");
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (request.threadId) return config.codexHome;
+  }
+  await writeCodexConfig(config, scopedHome);
+  return scopedHome;
+}
 
 export interface ParsedEvents {
   messages: string[];
@@ -296,6 +324,8 @@ export function localExecutionCommand(
 }
 
 export class CodexRunner implements AgentRunner {
+  private readonly preparing = new Set<string>();
+  private readonly cancelledPreparations = new Set<string>();
   private readonly active = new Map<
     string,
     {
@@ -325,6 +355,10 @@ export class CodexRunner implements AgentRunner {
   async cancel(agentId: string): Promise<boolean> {
     const active = this.active.get(agentId);
     if (!active) {
+      if (this.preparing.has(agentId)) {
+        this.cancelledPreparations.add(agentId);
+        return true;
+      }
       return false;
     }
     active.cancelled = true;
@@ -334,16 +368,30 @@ export class CodexRunner implements AgentRunner {
   }
 
   async run(request: RunnerRequest): Promise<RunnerResult> {
-    if (this.active.has(request.agentId)) {
+    if (this.active.has(request.agentId) || this.preparing.has(request.agentId)) {
       throw new Error("Agent already has an active Codex process");
     }
 
-    const command = localExecutionCommand(request, this.config);
-    const child = spawn(command.bin, command.args, {
-      cwd: request.workspacePath,
-      env: this.childEnvironment(request.executionMode),
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    this.preparing.add(request.agentId);
+    let child: ChildProcessByStdio<null, Readable, Readable>;
+    try {
+      const command = localExecutionCommand(request, this.config);
+      const codexHome =
+        request.executionMode === "codex"
+          ? await resolveRunCodexHome(this.config, request)
+          : undefined;
+      if (this.cancelledPreparations.delete(request.agentId)) {
+        throw new RunCancelledError();
+      }
+      child = spawn(command.bin, command.args, {
+        cwd: request.workspacePath,
+        env: this.childEnvironment(request.executionMode, codexHome),
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } finally {
+      this.preparing.delete(request.agentId);
+      this.cancelledPreparations.delete(request.agentId);
+    }
     const settled = new Promise<void>((resolve) => {
       child.once("close", () => resolve());
       child.once("error", () => resolve());
@@ -465,6 +513,7 @@ export class CodexRunner implements AgentRunner {
 
   private childEnvironment(
     executionMode: RunnerRequest["executionMode"] = "demo_runtime_failure",
+    codexHome?: string,
   ): NodeJS.ProcessEnv {
     const inheritedNames = [
       "PATH",
@@ -480,11 +529,11 @@ export class CodexRunner implements AgentRunner {
       "NODE_EXTRA_CA_CERTS",
       "TERM",
     ] as const;
-    const environment: NodeJS.ProcessEnv = {
-      CODEX_HOME: this.config.codexHome,
-      NO_COLOR: "1",
-    };
-    if (executionMode === "codex") environment.ARK_API_KEY = this.config.arkApiKey;
+    const environment: NodeJS.ProcessEnv = { NO_COLOR: "1" };
+    if (executionMode === "codex") {
+      environment.ARK_API_KEY = this.config.arkApiKey;
+      environment.CODEX_HOME = codexHome ?? this.config.codexHome;
+    }
     for (const name of inheritedNames) {
       if (process.env[name] !== undefined) environment[name] = process.env[name];
     }

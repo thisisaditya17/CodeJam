@@ -26,6 +26,9 @@ services:
       - ./workspaces:/app/workspaces
       - ./codex-home:/app/codex-home
     init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
     security_opt:
       - no-new-privileges:true
     cap_drop:

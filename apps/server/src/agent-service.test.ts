@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, realpath } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -325,7 +325,10 @@ describe("Agent lifecycle", () => {
     const createdAt = new Date().toISOString();
     await firstStore.mutate((database) => {
       const storedAgent = database.agents.find((item) => item.id === agent.id);
-      if (storedAgent) storedAgent.status = "busy";
+      if (storedAgent) {
+        storedAgent.status = "busy";
+        storedAgent.workspacePath = path.join(root, "untrusted-stored-path");
+      }
       database.runs.push({
         id: "run-interrupted",
         agentId: agent.id,
@@ -361,6 +364,9 @@ describe("Agent lifecycle", () => {
       failureCode: "server_restart",
     });
     expect(restarted.getAgent(agent.id).status).toBe("ready");
+    expect(restarted.getAgent(agent.id).workspacePath).toBe(
+      await realpath(path.join(root, "workspaces", agent.id)),
+    );
     expect(restarted.getTrace("run-interrupted").events.at(-1)).toMatchObject({
       type: "run.interrupted",
       metadata: { failureCode: "server_restart" },

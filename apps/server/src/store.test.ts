@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -91,5 +91,16 @@ describe("JsonStore", () => {
     expect(store.snapshot().messages.map((message) => message.content)).toEqual([
       "queue recovered",
     ]);
+  });
+
+  it("does not leave predictable temporary database files", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "launchpad-store-temp-test-"));
+    temporaryDirectories.push(root);
+    const store = new JsonStore(path.join(root, "db.json"));
+    await store.initialize();
+    await store.mutate((database) => {
+      database.messages = [];
+    });
+    expect((await readdir(root)).sort()).toEqual(["db.json"]);
   });
 });

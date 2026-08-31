@@ -1,13 +1,67 @@
-import { describe, expect, it } from "vitest";
+import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import {
   buildCodexArgs,
   localExecutionCommand,
   parseCodexEventLine,
+  resolveRunCodexHome,
 } from "./codex-runner.js";
 import type { TraceDraft } from "./types.js";
 
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) =>
+      rm(directory, { recursive: true, force: true }),
+    ),
+  );
+});
+
 describe("Codex runner protocol", () => {
+  it("isolates new Codex state by Agent and preserves legacy thread lookup", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "launchpad-codex-home-test-"));
+    temporaryDirectories.push(root);
+    const config = loadConfig({
+      NODE_ENV: "test",
+      APP_DATA_DIR: path.join(root, "data"),
+      AGENT_WORKSPACE_ROOT: path.join(root, "workspaces"),
+      CODEX_HOME: path.join(root, "codex-home"),
+      ARK_MODEL: "ep-test",
+    });
+
+    const legacy = await resolveRunCodexHome(config, {
+      agentId: "legacy-agent",
+      threadId: "existing-thread",
+    });
+    expect(legacy).toBe(config.codexHome);
+
+    const first = await resolveRunCodexHome(config, {
+      agentId: "new-agent",
+      threadId: null,
+    });
+    const outsideTarget = path.join(root, "must-not-be-overwritten");
+    await writeFile(outsideTarget, "preserve me", "utf8");
+    await rm(path.join(first, "config.toml"));
+    await symlink(outsideTarget, path.join(first, "config.toml"));
+    const continuation = await resolveRunCodexHome(config, {
+      agentId: "new-agent",
+      threadId: "new-thread",
+    });
+    const otherAgent = await resolveRunCodexHome(config, {
+      agentId: "other-agent",
+      threadId: null,
+    });
+    expect(first).toBe(continuation);
+    expect(first).not.toBe(otherAgent);
+    expect(path.dirname(first)).toBe(path.join(config.codexHome, "agents"));
+    expect(await readFile(outsideTarget, "utf8")).toBe("preserve me");
+    expect((await lstat(path.join(first, "config.toml"))).isSymbolicLink()).toBe(false);
+  });
+
   it("builds a new-session invocation", () => {
     const args = buildCodexArgs(
       {

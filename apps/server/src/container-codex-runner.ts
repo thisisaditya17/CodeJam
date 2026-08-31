@@ -1,10 +1,17 @@
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import {
+  execFile,
+  spawn,
+  type ChildProcess,
+  type ChildProcessByStdio,
+} from "node:child_process";
+import type { Readable } from "node:stream";
 import { promisify } from "node:util";
 import type { AppConfig } from "./config.js";
 import {
   buildCodexArgs,
   createParsedEvents,
   parseCodexEventLine,
+  resolveRunCodexHome,
 } from "./codex-runner.js";
 import { RunCancelledError, RunExecutionError } from "./errors.js";
 import type {
@@ -34,6 +41,7 @@ export function containerName(agentId: string, instanceId = "default"): string {
 export function buildContainerRunArgs(
   request: RunnerRequest,
   config: AppConfig,
+  codexHome = config.codexHome,
 ): string[] {
   const name = containerName(request.agentId, config.runtimeInstanceId);
   const engineName = config.containerEngine.split(/[\\/]/).at(-1)?.toLowerCase();
@@ -62,6 +70,9 @@ export function buildContainerRunArgs(
     "no-new-privileges",
     "--cap-drop",
     "ALL",
+    "--read-only",
+    "--tmpfs",
+    "/tmp:rw,noexec,nosuid,nodev,size=64m",
     "--cpus",
     String(config.containerCpuLimit),
     "--memory",
@@ -70,17 +81,18 @@ export function buildContainerRunArgs(
     String(config.containerPidsLimit),
     "--user",
     config.containerUser,
-    ...(request.executionMode === "codex" ? ["--env", "ARK_API_KEY"] : []),
-    "--env",
-    "CODEX_HOME=/codex-home",
+    ...(request.executionMode === "codex"
+      ? ["--env", "ARK_API_KEY", "--env", "CODEX_HOME=/codex-home"]
+      : []),
     "--env",
     "HOME=/tmp",
     "--env",
     "NO_COLOR=1",
     "--mount",
     "type=bind,src=" + request.workspacePath + ",dst=/workspace",
-    "--mount",
-    "type=bind,src=" + config.codexHome + ",dst=/codex-home",
+    ...(request.executionMode === "codex"
+      ? ["--mount", "type=bind,src=" + codexHome + ",dst=/codex-home"]
+      : []),
     "--workdir",
     "/workspace",
     config.containerRuntimeImage,
@@ -89,6 +101,8 @@ export function buildContainerRunArgs(
 }
 
 export class ContainerCodexRunner implements AgentRunner {
+  private readonly preparing = new Set<string>();
+  private readonly cancelledPreparations = new Set<string>();
   private readonly active = new Map<string, ActiveContainer>();
 
   constructor(private readonly config: AppConfig) {}
@@ -112,7 +126,13 @@ export class ContainerCodexRunner implements AgentRunner {
 
   async cancel(agentId: string): Promise<boolean> {
     const active = this.active.get(agentId);
-    if (!active) return false;
+    if (!active) {
+      if (this.preparing.has(agentId)) {
+        this.cancelledPreparations.add(agentId);
+        return true;
+      }
+      return false;
+    }
 
     active.cancelled = true;
     await this.removeContainer(active);
@@ -138,19 +158,33 @@ export class ContainerCodexRunner implements AgentRunner {
   }
 
   async run(request: RunnerRequest): Promise<RunnerResult> {
-    if (this.active.has(request.agentId)) {
+    if (this.active.has(request.agentId) || this.preparing.has(request.agentId)) {
       throw new Error("Agent already has an active Runtime container");
     }
 
-    const child = spawn(
-      this.config.containerEngine,
-      buildContainerRunArgs(request, this.config),
-      {
-        cwd: request.workspacePath,
-        env: this.childEnvironment(request.executionMode),
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
+    this.preparing.add(request.agentId);
+    let child: ChildProcessByStdio<null, Readable, Readable>;
+    try {
+      const codexHome =
+        request.executionMode === "codex"
+          ? await resolveRunCodexHome(this.config, request)
+          : undefined;
+      if (this.cancelledPreparations.delete(request.agentId)) {
+        throw new RunCancelledError();
+      }
+      child = spawn(
+        this.config.containerEngine,
+        buildContainerRunArgs(request, this.config, codexHome),
+        {
+          cwd: request.workspacePath,
+          env: this.childEnvironment(request.executionMode),
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+    } finally {
+      this.preparing.delete(request.agentId);
+      this.cancelledPreparations.delete(request.agentId);
+    }
     const settled = new Promise<void>((resolve) => {
       child.once("close", () => resolve());
       child.once("error", () => resolve());

@@ -34,7 +34,7 @@ variable "allowed_web_cidr" {
   description = "CIDR allowed to access the web UI. This must be an explicit, restricted network."
   type        = string
   validation {
-    condition     = var.allowed_web_cidr != "0.0.0.0/0"
+    condition     = !contains(["0.0.0.0/0", "::/0"], var.allowed_web_cidr)
     error_message = "allowed_web_cidr must not expose this code-execution POC to the entire Internet."
   }
 }
@@ -42,21 +42,37 @@ variable "allowed_web_cidr" {
 variable "allowed_ssh_cidr" {
   description = "CIDR allowed to SSH to the ECS."
   type        = string
+  validation {
+    condition     = !contains(["0.0.0.0/0", "::/0"], var.allowed_ssh_cidr)
+    error_message = "allowed_ssh_cidr must not expose SSH to the entire Internet."
+  }
 }
 
 variable "repository_url" {
   description = "Public Git URL of this Starter Kit repository."
   type        = string
   validation {
-    condition     = startswith(var.repository_url, "https://")
-    error_message = "repository_url must be an HTTPS URL."
+    condition     = can(regex("^https://[^[:space:]@]+$", var.repository_url))
+    error_message = "repository_url must be an HTTPS URL without credentials or whitespace."
   }
 }
 
 variable "repository_ref" {
-  description = "Git branch or tag deployed by cloud-init."
+  description = "Immutable 40-character Git commit SHA deployed by cloud-init."
   type        = string
-  default     = "main"
+  validation {
+    condition     = can(regex("^[0-9a-fA-F]{40}$", var.repository_ref))
+    error_message = "repository_ref must be a full 40-character Git commit SHA."
+  }
+}
+
+variable "docker_install_script_sha256" {
+  description = "Reviewed SHA-256 digest for https://get.docker.com at deployment time."
+  type        = string
+  validation {
+    condition     = can(regex("^[0-9a-fA-F]{64}$", var.docker_install_script_sha256))
+    error_message = "docker_install_script_sha256 must be a 64-character SHA-256 digest."
+  }
 }
 
 variable "ark_api_key" {

@@ -12,7 +12,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 FROM ${NODE_IMAGE} AS runtime
-ENV NODE_ENV=production
+ENV NODE_ENV=production HOME=/tmp
 WORKDIR /app
 
 ARG DEBIAN_MIRROR=""

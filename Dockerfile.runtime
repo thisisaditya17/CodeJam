@@ -32,4 +32,7 @@ WORKDIR /workspace
 COPY scripts/demo-runtime-failure.mjs /opt/agent-black-box/demo-runtime-failure.mjs
 COPY scripts/demo-runtime-success.mjs /opt/agent-black-box/demo-runtime-success.mjs
 
+RUN mkdir -p /codex-home /workspace && chown -R node:node /codex-home /workspace
+
+USER node
 CMD ["codex", "--version"]

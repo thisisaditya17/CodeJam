@@ -86,13 +86,49 @@ resource "volcenginecc_vpc_security_group" "launchpad" {
   ingress_permissions = local.ingress_permissions
   egress_permissions = [
     {
-      description     = "Outbound access for Ark, Git and package registries"
+      description     = "Outbound DNS over UDP"
       direction       = "egress"
       policy          = "accept"
-      port_end        = -1
-      port_start      = -1
+      port_end        = 53
+      port_start      = 53
       priority        = 1
-      protocol        = "all"
+      protocol        = "udp"
+      cidr_ip         = "0.0.0.0/0"
+      prefix_list_id  = ""
+      source_group_id = ""
+    },
+    {
+      description     = "Outbound DNS over TCP"
+      direction       = "egress"
+      policy          = "accept"
+      port_end        = 53
+      port_start      = 53
+      priority        = 1
+      protocol        = "tcp"
+      cidr_ip         = "0.0.0.0/0"
+      prefix_list_id  = ""
+      source_group_id = ""
+    },
+    {
+      description     = "Outbound HTTP for signed operating-system repositories"
+      direction       = "egress"
+      policy          = "accept"
+      port_end        = 80
+      port_start      = 80
+      priority        = 1
+      protocol        = "tcp"
+      cidr_ip         = "0.0.0.0/0"
+      prefix_list_id  = ""
+      source_group_id = ""
+    },
+    {
+      description     = "Outbound HTTPS for Ark, Git and package registries"
+      direction       = "egress"
+      policy          = "accept"
+      port_end        = 443
+      port_start      = 443
+      priority        = 1
+      protocol        = "tcp"
       cidr_ip         = "0.0.0.0/0"
       prefix_list_id  = ""
       source_group_id = ""
@@ -148,9 +184,10 @@ resource "volcenginecc_ecs_instance" "launchpad" {
   }
 
   user_data = base64encode(templatefile("${path.module}/cloud-init.yaml.tftpl", {
-    repository_url  = var.repository_url
-    repository_ref  = var.repository_ref
-    runtime_env_b64 = base64encode(local.runtime_env)
+    repository_url_b64           = base64encode(var.repository_url)
+    repository_ref               = var.repository_ref
+    docker_install_script_sha256 = lower(var.docker_install_script_sha256)
+    runtime_env_b64              = base64encode(local.runtime_env)
   }))
 
   tags = [

@@ -15,7 +15,9 @@
     "build": "npm run build -w @launchpad/web && npm run build -w @launchpad/server",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test -w @launchpad/server",
-    "check": "npm run typecheck && npm run test && npm run build",
+    "security:static": "node scripts/security-check.mjs",
+    "security:audit": "npm audit && npm audit signatures",
+    "check": "npm run security:static && npm run typecheck && npm run test && npm run build",
     "poc": "./scripts/start-local-poc.sh",
     "start": "npm run start -w @launchpad/server"
   },

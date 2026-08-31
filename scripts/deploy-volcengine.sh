@@ -20,9 +20,15 @@ if [[ ! -f deploy/volcengine/terraform.tfvars ]]; then
   exit 1
 fi
 
-set -a
-source .env.production
-set +a
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is required to read .env.production safely." >&2
+  exit 1
+fi
+
+ARK_API_KEY="$(node scripts/read-dotenv.mjs .env.production ARK_API_KEY)"
+ARK_MODEL="$(node scripts/read-dotenv.mjs .env.production ARK_MODEL)"
+APP_AUTH_TOKEN="$(node scripts/read-dotenv.mjs .env.production APP_AUTH_TOKEN)"
+ARK_BASE_URL="$(node scripts/read-dotenv.mjs .env.production ARK_BASE_URL)"
 
 if [[ "${ARK_API_KEY:-}" == "" || "${ARK_MODEL:-}" == "" || "${APP_AUTH_TOKEN:-}" == "" ]]; then
   echo "ARK_API_KEY, ARK_MODEL and APP_AUTH_TOKEN are required in .env.production." >&2

@@ -374,8 +374,14 @@ boundaries.
 npm run check
 terraform fmt -check -recursive deploy/volcengine
 LAUNCHPAD_ENV_FILE=.env.example docker compose --env-file .env.example config
-npm audit --omit=dev
+npm run security:audit
 ```
+
+`npm run check` includes deterministic guardrails for tracked secrets,
+dangerous JavaScript constructs, and required container controls.
+`npm run security:audit` checks the complete npm dependency graph and verifies
+available registry signatures. These checks complement review and focused
+tests; they are not exhaustive vulnerability detection.
 
 ## Documentation
 

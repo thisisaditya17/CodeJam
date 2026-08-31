@@ -10,4 +10,8 @@ allowed_ssh_cidr = "203.0.113.10/32"
 # Push this generated repository to a public Git remote before using the
 # full Terraform + cloud-init path.
 repository_url = "https://github.com/your-org/volc-agent-launchpad.git"
-repository_ref = "main"
+repository_ref = "replace-with-full-40-character-commit-sha"
+
+# Review the current https://get.docker.com contents before deployment, then
+# record its SHA-256 digest here. Cloud-init refuses to execute a mismatch.
+docker_install_script_sha256 = "replace-with-reviewed-64-character-sha256"
