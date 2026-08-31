@@ -20,7 +20,6 @@ export interface Agent {
   description: string;
   instructions: string;
   status: AgentStatus;
-  workspacePath: string;
   codexThreadId: string | null;
   lastError: string | null;
   createdAt: string;

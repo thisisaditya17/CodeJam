@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AgentRun, Database } from "./types.js";
 
@@ -75,11 +76,18 @@ export class JsonStore {
   }
 
   private async persist(data: Database = this.data): Promise<void> {
-    const temporaryPath = this.filePath + ".tmp";
-    await writeFile(temporaryPath, JSON.stringify(data, null, 2) + "\n", {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-    await rename(temporaryPath, this.filePath);
+    const temporaryPath =
+      this.filePath + "." + process.pid + "." + randomUUID() + ".tmp";
+    try {
+      await writeFile(temporaryPath, JSON.stringify(data, null, 2) + "\n", {
+        encoding: "utf8",
+        mode: 0o600,
+        flag: "wx",
+      });
+      await rename(temporaryPath, this.filePath);
+    } catch (error) {
+      await rm(temporaryPath, { force: true });
+      throw error;
+    }
   }
 }

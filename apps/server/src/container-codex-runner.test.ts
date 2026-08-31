@@ -40,6 +40,8 @@ describe("Container Codex runner", () => {
     expect(args).toContain("/workspace");
     expect(args).toContain("io.codejam.instance-id=test-instance");
     expect(args).toContain("keep-id");
+    expect(args).toContain("--read-only");
+    expect(args).toContain("/tmp:rw,noexec,nosuid,nodev,size=64m");
     expect(args).not.toContain("secret-that-must-not-appear-in-argv");
   });
 
@@ -88,6 +90,8 @@ describe("Container Codex runner", () => {
     ]);
     expect(args).not.toContain("ARK_API_KEY");
     expect(args).not.toContain("must-not-be-forwarded");
+    expect(args).not.toContain("CODEX_HOME=/codex-home");
+    expect(args).not.toContain("type=bind,src=/tmp/codex-home,dst=/codex-home");
   });
 
   it("runs the credential-free success fixture without forwarding the Ark credential", () => {
@@ -115,5 +119,7 @@ describe("Container Codex runner", () => {
     ]);
     expect(args).not.toContain("ARK_API_KEY");
     expect(args).not.toContain("must-not-be-forwarded");
+    expect(args).not.toContain("CODEX_HOME=/codex-home");
+    expect(args).not.toContain("type=bind,src=/tmp/codex-home,dst=/codex-home");
   });
 });

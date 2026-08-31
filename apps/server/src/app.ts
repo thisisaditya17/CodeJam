@@ -1,4 +1,6 @@
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
 import { timingSafeEqual } from "node:crypto";
@@ -7,6 +9,8 @@ import { z } from "zod";
 import type { AppConfig } from "./config.js";
 import { HttpError } from "./errors.js";
 import type { AgentService } from "./agent-service.js";
+import { redactText } from "./redaction.js";
+import type { Agent } from "./types.js";
 
 const agentIdParams = z.object({ id: z.string().uuid() });
 const runIdParams = z.object({ id: z.string().uuid() });
@@ -27,6 +31,15 @@ const demoRunBody = z.object({
   fixture: z.enum(["runtime_nonzero", "runtime_success"]),
 });
 const retryRunBody = z.object({ idempotencyKey: z.string().uuid() });
+const mutationRateLimit = (max = 60) => ({
+  config: { rateLimit: { max, timeWindow: "1 minute" } },
+});
+
+function agentResponse(agent: Agent): Omit<Agent, "workspacePath"> {
+  const { workspacePath, ...response } = agent;
+  void workspacePath;
+  return response;
+}
 
 export async function createApp(
   config: AppConfig,
@@ -36,8 +49,34 @@ export async function createApp(
     logger: {
       level: config.logLevel,
       redact: ["req.headers.authorization", "req.headers.cookie"],
+      serializers: {
+        req(request) {
+          const queryIndex = request.url.indexOf("?");
+          return {
+            method: request.method,
+            url: queryIndex === -1 ? request.url : request.url.slice(0, queryIndex),
+            host: request.host,
+            remoteAddress: request.ip,
+          };
+        },
+      },
     },
     bodyLimit: 1_048_576,
+    connectionTimeout: 10_000,
+    requestTimeout: 30_000,
+    keepAliveTimeout: 5_000,
+    maxRequestsPerSocket: 1_000,
+  });
+
+  await app.register(helmet, {
+    global: true,
+    ...(config.nodeEnv === "production" ? {} : { contentSecurityPolicy: false }),
+  });
+  await app.register(rateLimit, {
+    global: true,
+    max: 300,
+    timeWindow: "1 minute",
+    hook: "onRequest",
   });
 
   await app.register(cors, {
@@ -68,48 +107,86 @@ export async function createApp(
     }
   });
 
-  app.get("/api/health", async () => ({
-    ok: true,
-    service: "volc-agent-launchpad",
-  }));
+  app.addHook("onSend", async (request, reply, payload) => {
+    if (request.url.startsWith("/api/")) {
+      void reply.header("cache-control", "no-store");
+    }
+    return payload;
+  });
 
-  app.get("/api/auth", async () => ({ required: config.authToken.length > 0 }));
+  app.get(
+    "/api/health",
+    { config: { rateLimit: false } },
+    async () => ({
+      ok: true,
+      service: "volc-agent-launchpad",
+    }),
+  );
+
+  app.get(
+    "/api/auth",
+    { config: { rateLimit: false } },
+    async () => ({ required: config.authToken.length > 0 }),
+  );
 
   app.get("/api/system", async () => service.systemInfo());
 
-  app.get("/api/agents", async () => ({ agents: service.listAgents() }));
+  app.get("/api/agents", async () => ({
+    agents: service.listAgents().map(agentResponse),
+  }));
 
-  app.post("/api/agents", async (request, reply) => {
-    const body = createAgentBody.parse(request.body);
-    const agent = await service.createAgent(body);
-    return reply.code(201).send({ agent });
-  });
+  app.post(
+    "/api/agents",
+    mutationRateLimit(),
+    async (request, reply) => {
+      const body = createAgentBody.parse(request.body);
+      const agent = await service.createAgent(body);
+      return reply.code(201).send({ agent: agentResponse(agent) });
+    },
+  );
 
   app.get("/api/agents/:id", async (request) => {
     const { id } = agentIdParams.parse(request.params);
-    return { agent: service.getAgent(id) };
+    return { agent: agentResponse(service.getAgent(id)) };
   });
 
-  app.patch("/api/agents/:id", async (request) => {
-    const { id } = agentIdParams.parse(request.params);
-    const body = updateAgentBody.parse(request.body);
-    return { agent: await service.updateAgent(id, body) };
-  });
+  app.patch(
+    "/api/agents/:id",
+    mutationRateLimit(),
+    async (request) => {
+      const { id } = agentIdParams.parse(request.params);
+      const body = updateAgentBody.parse(request.body);
+      return { agent: agentResponse(await service.updateAgent(id, body)) };
+    },
+  );
 
-  app.delete("/api/agents/:id", async (request) => {
-    const { id } = agentIdParams.parse(request.params);
-    return service.deleteAgent(id);
-  });
+  app.delete(
+    "/api/agents/:id",
+    mutationRateLimit(),
+    async (request) => {
+      const { id } = agentIdParams.parse(request.params);
+      await service.deleteAgent(id);
+      return { archived: true };
+    },
+  );
 
-  app.post("/api/agents/:id/start", async (request) => {
-    const { id } = agentIdParams.parse(request.params);
-    return { agent: await service.startAgent(id) };
-  });
+  app.post(
+    "/api/agents/:id/start",
+    mutationRateLimit(),
+    async (request) => {
+      const { id } = agentIdParams.parse(request.params);
+      return { agent: agentResponse(await service.startAgent(id)) };
+    },
+  );
 
-  app.post("/api/agents/:id/stop", async (request) => {
-    const { id } = agentIdParams.parse(request.params);
-    return { agent: await service.stopAgent(id) };
-  });
+  app.post(
+    "/api/agents/:id/stop",
+    mutationRateLimit(),
+    async (request) => {
+      const { id } = agentIdParams.parse(request.params);
+      return { agent: agentResponse(await service.stopAgent(id)) };
+    },
+  );
 
   app.get("/api/agents/:id/messages", async (request) => {
     const { id } = agentIdParams.parse(request.params);
@@ -121,19 +198,27 @@ export async function createApp(
     return { runs: service.getRuns(id) };
   });
 
-  app.post("/api/agents/:id/messages", async (request, reply) => {
-    const { id } = agentIdParams.parse(request.params);
-    const body = messageBody.parse(request.body);
-    const result = await service.sendMessage(id, body.content, body.executionMode);
-    return reply.code(202).send(result);
-  });
+  app.post(
+    "/api/agents/:id/messages",
+    mutationRateLimit(10),
+    async (request, reply) => {
+      const { id } = agentIdParams.parse(request.params);
+      const body = messageBody.parse(request.body);
+      const result = await service.sendMessage(id, body.content, body.executionMode);
+      return reply.code(202).send(result);
+    },
+  );
 
-  app.post("/api/agents/:id/demo-runs", async (request, reply) => {
-    const { id } = agentIdParams.parse(request.params);
-    const body = demoRunBody.parse(request.body);
-    const result = await service.startDemoRun(id, body.fixture);
-    return reply.code(202).send(result);
-  });
+  app.post(
+    "/api/agents/:id/demo-runs",
+    mutationRateLimit(10),
+    async (request, reply) => {
+      const { id } = agentIdParams.parse(request.params);
+      const body = demoRunBody.parse(request.body);
+      const result = await service.startDemoRun(id, body.fixture);
+      return reply.code(202).send(result);
+    },
+  );
 
   app.get("/api/runs/:id", async (request) => {
     const { id } = runIdParams.parse(request.params);
@@ -145,12 +230,16 @@ export async function createApp(
     return service.getTrace(id);
   });
 
-  app.post("/api/runs/:id/retries", async (request, reply) => {
-    const { id } = runIdParams.parse(request.params);
-    const body = retryRunBody.parse(request.body);
-    const result = await service.retryRun(id, body.idempotencyKey);
-    return reply.code(202).send(result);
-  });
+  app.post(
+    "/api/runs/:id/retries",
+    mutationRateLimit(10),
+    async (request, reply) => {
+      const { id } = runIdParams.parse(request.params);
+      const body = retryRunBody.parse(request.body);
+      const result = await service.retryRun(id, body.idempotencyKey);
+      return reply.code(202).send(result);
+    },
+  );
 
   if (config.nodeEnv === "production") {
     const webRoot = fileURLToPath(new URL("../../web/dist", import.meta.url));
@@ -182,11 +271,31 @@ export async function createApp(
             ? frameworkStatus
             : 500;
     if (statusCode >= 500) {
-      request.log.error(appError);
+      request.log.error("Unhandled request failure");
     }
+    const responseMessage =
+      error instanceof HttpError
+        ? appError.message
+        : validationError || statusCode === 400
+          ? "Invalid request"
+          : statusCode === 413
+            ? "Request body too large"
+            : statusCode === 429
+              ? "Too many requests"
+              : statusCode >= 500
+                ? "Internal server error"
+                : "Request rejected";
     return reply.code(statusCode).send({
-      error: appError.message,
-      ...(validationError ? { details: error.issues } : {}),
+      error: responseMessage,
+      ...(validationError
+        ? {
+            details: error.issues.map((issue) => ({
+              code: issue.code,
+              path: issue.path.map(String),
+              message: redactText(issue.message, 512).text,
+            })),
+          }
+        : {}),
     });
   });
 

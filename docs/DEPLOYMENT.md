@@ -154,8 +154,22 @@ cp deploy/volcengine/terraform.tfvars.example \
 ```
 
 Set `ARK_API_KEY` and `ARK_MODEL` in `.env.production`. Set the region, zone,
-image, instance type, key pair, allowed CIDRs, and repository URL in
-`terraform.tfvars`.
+image, instance type, key pair, restricted Web/SSH CIDRs, and repository URL in
+`terraform.tfvars`. Set `repository_ref` to the full commit returned by
+`git rev-parse HEAD`; branches and tags are intentionally rejected.
+
+Cloud-init also requires a reviewed checksum for Docker's convenience install
+script. Download and inspect the script without executing it, calculate its
+digest, and set `docker_install_script_sha256` in `terraform.tfvars`:
+
+```bash
+curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+less /tmp/get-docker.sh
+sha256sum /tmp/get-docker.sh
+```
+
+The instance refuses to execute the script if the downloaded content does not
+match that digest.
 
 Provide account credentials only through the current shell:
 

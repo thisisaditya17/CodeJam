@@ -51,6 +51,17 @@ export class AgentService {
   async initialize(): Promise<void> {
     await this.store.initialize();
     await this.workspaces.initialize();
+    const normalizedWorkspacePaths = new Map<string, string>();
+    for (const agent of this.store.snapshot().agents) {
+      const expected = this.workspaces.workspacePath(agent.id);
+      normalizedWorkspacePaths.set(
+        agent.id,
+        await this.workspaces.assertManagedWorkspace({
+          id: agent.id,
+          workspacePath: expected,
+        }),
+      );
+    }
     await this.store.mutate((database) => {
       for (const run of database.runs) {
         if (run.status === "queued" || run.status === "running") {
@@ -71,6 +82,8 @@ export class AgentService {
         }
       }
       for (const agent of database.agents) {
+        agent.workspacePath =
+          normalizedWorkspacePaths.get(agent.id) ?? this.workspaces.workspacePath(agent.id);
         if (agent.status === "busy") {
           agent.status = "ready";
           agent.updatedAt = now();
@@ -333,7 +346,7 @@ export class AgentService {
       }
 
       const executionMode: RunnerExecutionMode =
-        source.executionMode === "demo_runtime_failure" ? "demo_runtime_success" : "codex";
+        source.executionMode === "codex" ? "codex" : "demo_runtime_success";
       if (executionMode === "codex" && !isArkConfigured(this.config)) {
         throw new HttpError(
           503,

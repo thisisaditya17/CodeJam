@@ -1,8 +1,17 @@
-import { execFile } from "node:child_process";
-import { spawn, type ChildProcess } from "node:child_process";
+import {
+  execFile,
+  spawn,
+  type ChildProcess,
+  type ChildProcessByStdio,
+} from "node:child_process";
+import { createHash } from "node:crypto";
+import { lstat } from "node:fs/promises";
+import path from "node:path";
+import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { AppConfig } from "./config.js";
+import { writeCodexConfig } from "./config.js";
 import { RunCancelledError, RunExecutionError } from "./errors.js";
 import type {
   AgentRunner,
@@ -16,6 +25,25 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
+export async function resolveRunCodexHome(
+  config: AppConfig,
+  request: Pick<RunnerRequest, "agentId" | "threadId">,
+): Promise<string> {
+  const agentDirectory = createHash("sha256").update(request.agentId).digest("hex");
+  const scopedHome = path.join(config.codexHome, "agents", agentDirectory);
+  try {
+    const scopedStat = await lstat(scopedHome);
+    if (!scopedStat.isDirectory() || scopedStat.isSymbolicLink()) {
+      throw new Error("Per-Agent CODEX_HOME must be a real directory");
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (request.threadId) return config.codexHome;
+  }
+  await writeCodexConfig(config, scopedHome);
+  return scopedHome;
+}
+
 export interface ParsedEvents {
   messages: string[];
   threadId: string | null;
@@ -25,6 +53,7 @@ export interface ParsedEvents {
   provider?: "local-process" | "container" | undefined;
   itemStartedAt?: Map<string, number> | undefined;
   turnStartedAt?: number | null | undefined;
+  executionMode?: RunnerRequest["executionMode"] | undefined;
 }
 
 export function createParsedEvents(
@@ -40,6 +69,7 @@ export function createParsedEvents(
     provider,
     itemStartedAt: new Map<string, number>(),
     turnStartedAt: null,
+    executionMode: request.executionMode,
   };
 }
 
@@ -278,6 +308,167 @@ export function parseCodexEventLine(line: string, parsed: ParsedEvents): void {
   }
 }
 
+export function parseRuntimeProofEventLine(line: string, parsed: ParsedEvents): void {
+  let event: Record<string, unknown>;
+  try {
+    event = JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+
+  if (event.type === "runtime.proof.started") {
+    parsed.turnStartedAt = Date.now();
+    emitTrace(parsed, {
+      dedupeKey: "runtime.proof_started",
+      type: "runtime.proof_started",
+      source: "runtime",
+      status: "running",
+      summary: "Controlled Runtime proof started.",
+      metadata: providerMetadata(parsed),
+    });
+  }
+
+  if (
+    event.type === "runtime.operation.started" &&
+    event.operation &&
+    typeof event.operation === "object"
+  ) {
+    const operation = event.operation as Record<string, unknown>;
+    if (typeof operation.id === "string" && typeof operation.command === "string") {
+      parsed.itemStartedAt ??= new Map<string, number>();
+      parsed.itemStartedAt.set(operation.id, Date.now());
+      emitTrace(parsed, {
+        dedupeKey: "runtime.operation_started:" + operation.id,
+        type: "runtime.operation_started",
+        source: "runtime",
+        status: "running",
+        summary: "Controlled Runtime operation started.",
+        metadata: {
+          itemId: operation.id,
+          commandPreview: operation.command,
+          ...providerMetadata(parsed),
+        },
+      });
+    }
+  }
+
+  if (
+    event.type === "runtime.operation.completed" &&
+    event.operation &&
+    typeof event.operation === "object"
+  ) {
+    const operation = event.operation as Record<string, unknown>;
+    if (typeof operation.id === "string" && typeof operation.command === "string") {
+      const startedAt = parsed.itemStartedAt?.get(operation.id);
+      emitTrace(parsed, {
+        dedupeKey: "runtime.operation_completed:" + operation.id,
+        type: "runtime.operation_completed",
+        source: "runtime",
+        status: itemStatus(operation.status),
+        summary:
+          operation.status === "failed"
+            ? "Controlled Runtime operation failed."
+            : "Controlled Runtime operation completed.",
+        ...(startedAt !== undefined ? { durationMs: Date.now() - startedAt } : {}),
+        metadata: {
+          itemId: operation.id,
+          commandPreview: operation.command,
+          ...(typeof operation.exit_code === "number"
+            ? { exitCode: operation.exit_code }
+            : {}),
+          ...providerMetadata(parsed),
+        },
+      });
+    }
+  }
+
+  if (event.type === "runtime.file.changed") {
+    emitTrace(parsed, {
+      dedupeKey: "runtime.file_changed",
+      type: "runtime.file_changed",
+      source: "runtime",
+      status: "succeeded",
+      summary: "Controlled Runtime changed workspace files.",
+      metadata: {
+        fileChanges: fileChanges(event.changes),
+        ...providerMetadata(parsed),
+      },
+    });
+  }
+
+  if (event.type === "runtime.message" && typeof event.text === "string") {
+    parsed.messages.push(event.text);
+  }
+
+  if (event.type === "runtime.proof.completed") {
+    const usage = event.usage;
+    if (usage && typeof usage === "object") {
+      const counts = usage as Record<string, unknown>;
+      parsed.usage = {
+        ...(typeof counts.input_tokens === "number"
+          ? { inputTokens: counts.input_tokens }
+          : {}),
+        ...(typeof counts.cached_input_tokens === "number"
+          ? { cachedInputTokens: counts.cached_input_tokens }
+          : {}),
+        ...(typeof counts.output_tokens === "number"
+          ? { outputTokens: counts.output_tokens }
+          : {}),
+      };
+      emitTrace(parsed, {
+        dedupeKey: "runtime.metrics_reported",
+        type: "runtime.metrics_reported",
+        source: "runtime",
+        status: "info",
+        summary: "Controlled Runtime proof reported bounded usage metrics.",
+        metadata: { usage: parsed.usage, ...providerMetadata(parsed) },
+      });
+    }
+    emitTrace(parsed, {
+      dedupeKey: "runtime.proof_completed",
+      type: "runtime.proof_completed",
+      source: "runtime",
+      status: "succeeded",
+      summary: "Controlled Runtime proof completed.",
+      ...(parsed.turnStartedAt != null
+        ? { durationMs: Date.now() - parsed.turnStartedAt }
+        : {}),
+      metadata: providerMetadata(parsed),
+    });
+  }
+
+  if (event.type === "runtime.proof.failed") {
+    const error =
+      event.error && typeof event.error === "object"
+        ? (event.error as Record<string, unknown>)
+        : null;
+    const message =
+      error && typeof error.message === "string"
+        ? error.message
+        : "Controlled Runtime proof failed without detail";
+    parsed.errors.push(message);
+    emitTrace(parsed, {
+      dedupeKey: "runtime.proof_failed",
+      type: "runtime.proof_failed",
+      source: "runtime",
+      status: "failed",
+      summary: message,
+      ...(parsed.turnStartedAt != null
+        ? { durationMs: Date.now() - parsed.turnStartedAt }
+        : {}),
+      metadata: providerMetadata(parsed),
+    });
+  }
+}
+
+export function parseRunnerEventLine(line: string, parsed: ParsedEvents): void {
+  if (parsed.executionMode && parsed.executionMode !== "codex") {
+    parseRuntimeProofEventLine(line, parsed);
+    return;
+  }
+  parseCodexEventLine(line, parsed);
+}
+
 export function localExecutionCommand(
   request: RunnerRequest,
   config: AppConfig,
@@ -296,6 +487,8 @@ export function localExecutionCommand(
 }
 
 export class CodexRunner implements AgentRunner {
+  private readonly preparing = new Set<string>();
+  private readonly cancelledPreparations = new Set<string>();
   private readonly active = new Map<
     string,
     {
@@ -325,6 +518,10 @@ export class CodexRunner implements AgentRunner {
   async cancel(agentId: string): Promise<boolean> {
     const active = this.active.get(agentId);
     if (!active) {
+      if (this.preparing.has(agentId)) {
+        this.cancelledPreparations.add(agentId);
+        return true;
+      }
       return false;
     }
     active.cancelled = true;
@@ -334,16 +531,30 @@ export class CodexRunner implements AgentRunner {
   }
 
   async run(request: RunnerRequest): Promise<RunnerResult> {
-    if (this.active.has(request.agentId)) {
+    if (this.active.has(request.agentId) || this.preparing.has(request.agentId)) {
       throw new Error("Agent already has an active Codex process");
     }
 
-    const command = localExecutionCommand(request, this.config);
-    const child = spawn(command.bin, command.args, {
-      cwd: request.workspacePath,
-      env: this.childEnvironment(request.executionMode),
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    this.preparing.add(request.agentId);
+    let child: ChildProcessByStdio<null, Readable, Readable>;
+    try {
+      const command = localExecutionCommand(request, this.config);
+      const codexHome =
+        request.executionMode === "codex"
+          ? await resolveRunCodexHome(this.config, request)
+          : undefined;
+      if (this.cancelledPreparations.delete(request.agentId)) {
+        throw new RunCancelledError();
+      }
+      child = spawn(command.bin, command.args, {
+        cwd: request.workspacePath,
+        env: this.childEnvironment(request.executionMode, codexHome),
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } finally {
+      this.preparing.delete(request.agentId);
+      this.cancelledPreparations.delete(request.agentId);
+    }
     const settled = new Promise<void>((resolve) => {
       child.once("close", () => resolve());
       child.once("error", () => resolve());
@@ -375,7 +586,7 @@ export class CodexRunner implements AgentRunner {
         const lines = stdout.split(/\r?\n/);
         stdout = lines.pop() ?? "";
         for (const line of lines) {
-          parseCodexEventLine(line, parsed);
+          parseRunnerEventLine(line, parsed);
         }
       } else {
         stderr += chunk.toString("utf8");
@@ -406,7 +617,7 @@ export class CodexRunner implements AgentRunner {
         throw new RunExecutionError("spawn_error", "Runtime failed to start: " + detail);
       }
       if (stdout.trim()) {
-        parseCodexEventLine(stdout.trim(), parsed);
+        parseRunnerEventLine(stdout.trim(), parsed);
       }
       if (active.cancelled) {
         throw new RunCancelledError();
@@ -465,6 +676,7 @@ export class CodexRunner implements AgentRunner {
 
   private childEnvironment(
     executionMode: RunnerRequest["executionMode"] = "demo_runtime_failure",
+    codexHome?: string,
   ): NodeJS.ProcessEnv {
     const inheritedNames = [
       "PATH",
@@ -480,11 +692,11 @@ export class CodexRunner implements AgentRunner {
       "NODE_EXTRA_CA_CERTS",
       "TERM",
     ] as const;
-    const environment: NodeJS.ProcessEnv = {
-      CODEX_HOME: this.config.codexHome,
-      NO_COLOR: "1",
-    };
-    if (executionMode === "codex") environment.ARK_API_KEY = this.config.arkApiKey;
+    const environment: NodeJS.ProcessEnv = { NO_COLOR: "1" };
+    if (executionMode === "codex") {
+      environment.ARK_API_KEY = this.config.arkApiKey;
+      environment.CODEX_HOME = codexHome ?? this.config.codexHome;
+    }
     for (const name of inheritedNames) {
       if (process.env[name] !== undefined) environment[name] = process.env[name];
     }

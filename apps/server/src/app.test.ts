@@ -9,6 +9,86 @@ const service = {
 } as unknown as AgentService;
 
 describe("HTTP boundary", () => {
+  it("sets security and no-store headers on API responses", async () => {
+    const app = await createApp(loadConfig({ NODE_ENV: "test" }), service);
+    const response = await app.inject({ method: "GET", url: "/api/agents" });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+    expect(response.headers["x-frame-options"]).toBe("SAMEORIGIN");
+    await app.close();
+  });
+
+  it("does not disclose internal error or secret details", async () => {
+    const failingService = {
+      ...service,
+      systemInfo: async () => {
+        throw new Error("token: internal-canary-value at /private/server/path");
+      },
+    } as unknown as AgentService;
+    const app = await createApp(loadConfig({ NODE_ENV: "test" }), failingService);
+    const response = await app.inject({ method: "GET", url: "/api/system" });
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({ error: "Internal server error" });
+    expect(response.body).not.toContain("internal-canary-value");
+    expect(response.body).not.toContain("/private/server/path");
+    await app.close();
+  });
+
+  it("omits absolute workspace paths from public Agent responses", async () => {
+    const agentId = "22222222-2222-4222-8222-222222222222";
+    const boundaryService = {
+      ...service,
+      listAgents: () => [
+        {
+          id: agentId,
+          name: "Safe Agent",
+          description: "",
+          instructions: "",
+          status: "ready",
+          workspacePath: "/Users/private-name/workspaces/agent",
+          codexThreadId: null,
+          lastError: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    } as unknown as AgentService;
+    const app = await createApp(loadConfig({ NODE_ENV: "test" }), boundaryService);
+    const response = await app.inject({ method: "GET", url: "/api/agents" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).not.toContain("workspacePath");
+    expect(response.body).not.toContain("/Users/private-name");
+    expect(response.json()).toMatchObject({ agents: [{ id: agentId, name: "Safe Agent" }] });
+    await app.close();
+  });
+
+  it("rate-limits repeated Runtime mutation requests", async () => {
+    const agentId = "22222222-2222-4222-8222-222222222222";
+    const boundaryService = {
+      ...service,
+      startDemoRun: async (id: string) => ({ run: { id: "run-id", agentId: id } }),
+    } as unknown as AgentService;
+    const app = await createApp(loadConfig({ NODE_ENV: "test" }), boundaryService);
+    for (let index = 0; index < 10; index += 1) {
+      const accepted = await app.inject({
+        method: "POST",
+        url: "/api/agents/" + agentId + "/demo-runs",
+        payload: { fixture: "runtime_success" },
+      });
+      expect(accepted.statusCode).toBe(202);
+    }
+    const limited = await app.inject({
+      method: "POST",
+      url: "/api/agents/" + agentId + "/demo-runs",
+      payload: { fixture: "runtime_success" },
+    });
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toEqual({ error: "Too many requests" });
+    await app.close();
+  });
+
   it("protects API routes with the configured shared token", async () => {
     const app = await createApp(
       loadConfig({ NODE_ENV: "test", APP_AUTH_TOKEN: "a-strong-test-token" }),

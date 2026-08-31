@@ -64,9 +64,9 @@ detect_engine() {
 }
 
 if [[ -z "${ARK_API_KEY:-}" || -z "${ARK_MODEL:-}" ]]; then
-  log "ARK_API_KEY and ARK_MODEL are required."
-  log "Example: ARK_API_KEY=key ARK_MODEL=ep-id ./scripts/start-local-poc.sh"
-  exit 2
+  log "ModelArk is not configured."
+  log "Model-backed tasks will be unavailable."
+  log "The credential-free workspace and controlled-failure proofs remain available."
 fi
 
 command -v node >/dev/null 2>&1 || {

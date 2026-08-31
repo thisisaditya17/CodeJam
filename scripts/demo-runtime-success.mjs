@@ -11,16 +11,12 @@ try {
 
 const emit = (event) => process.stdout.write(JSON.stringify(event) + "\n");
 
-emit({ type: "thread.started", thread_id: "demo-success-fixture-thread" });
-emit({ type: "turn.started" });
+emit({ type: "runtime.proof.started" });
 emit({
-  type: "item.started",
-  item: {
+  type: "runtime.operation.started",
+  operation: {
     id: "fixture-success-command",
-    type: "command_execution",
     command: "write and verify recovery-proof.txt",
-    aggregated_output: "",
-    exit_code: null,
     status: "in_progress",
   },
 });
@@ -30,34 +26,23 @@ const actual = await readFile(fileName, "utf8");
 if (actual !== expected) throw new Error("Workspace proof did not verify");
 
 emit({
-  type: "item.completed",
-  item: {
+  type: "runtime.operation.completed",
+  operation: {
     id: "fixture-success-command",
-    type: "command_execution",
     command: "write and verify recovery-proof.txt",
-    aggregated_output: "workspace proof verified",
     exit_code: 0,
     status: "completed",
   },
 });
 emit({
-  type: "item.completed",
-  item: {
-    id: "fixture-success-file",
-    type: "file_change",
-    changes: [{ path: fileName, kind: existed ? "update" : "add" }],
-    status: "completed",
-  },
+  type: "runtime.file.changed",
+  changes: [{ path: fileName, kind: existed ? "update" : "add" }],
 });
 emit({
-  type: "item.completed",
-  item: {
-    id: "fixture-success-message",
-    type: "agent_message",
-    text: "Created and verified recovery-proof.txt through the credential-free Runtime proof.",
-  },
+  type: "runtime.message",
+  text: "Created and verified recovery-proof.txt through the credential-free Runtime proof.",
 });
 emit({
-  type: "turn.completed",
+  type: "runtime.proof.completed",
   usage: { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0 },
 });

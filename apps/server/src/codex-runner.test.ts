@@ -1,13 +1,72 @@
-import { describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
+import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import {
   buildCodexArgs,
+  CodexRunner,
+  createParsedEvents,
   localExecutionCommand,
   parseCodexEventLine,
+  parseRunnerEventLine,
+  resolveRunCodexHome,
 } from "./codex-runner.js";
 import type { TraceDraft } from "./types.js";
 
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) =>
+      rm(directory, { recursive: true, force: true }),
+    ),
+  );
+});
+
 describe("Codex runner protocol", () => {
+  it("isolates new Codex state by Agent and preserves legacy thread lookup", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "launchpad-codex-home-test-"));
+    temporaryDirectories.push(root);
+    const config = loadConfig({
+      NODE_ENV: "test",
+      APP_DATA_DIR: path.join(root, "data"),
+      AGENT_WORKSPACE_ROOT: path.join(root, "workspaces"),
+      CODEX_HOME: path.join(root, "codex-home"),
+      ARK_MODEL: "ep-test",
+    });
+
+    const legacy = await resolveRunCodexHome(config, {
+      agentId: "legacy-agent",
+      threadId: "existing-thread",
+    });
+    expect(legacy).toBe(config.codexHome);
+
+    const first = await resolveRunCodexHome(config, {
+      agentId: "new-agent",
+      threadId: null,
+    });
+    const outsideTarget = path.join(root, "must-not-be-overwritten");
+    await writeFile(outsideTarget, "preserve me", "utf8");
+    await rm(path.join(first, "config.toml"));
+    await symlink(outsideTarget, path.join(first, "config.toml"));
+    const continuation = await resolveRunCodexHome(config, {
+      agentId: "new-agent",
+      threadId: "new-thread",
+    });
+    const otherAgent = await resolveRunCodexHome(config, {
+      agentId: "other-agent",
+      threadId: null,
+    });
+    expect(first).toBe(continuation);
+    expect(first).not.toBe(otherAgent);
+    expect(path.dirname(first)).toBe(path.join(config.codexHome, "agents"));
+    expect(await readFile(outsideTarget, "utf8")).toBe("preserve me");
+    expect((await lstat(path.join(first, "config.toml"))).isSymbolicLink()).toBe(false);
+  });
+
   it("builds a new-session invocation", () => {
     const args = buildCodexArgs(
       {
@@ -175,6 +234,85 @@ describe("Codex runner protocol", () => {
     expect(command.args).not.toContain("real-secret");
   });
 
+  it("derives controlled failure evidence from a real child process exit", () => {
+    const fixturePath = fileURLToPath(
+      new URL("../../../scripts/demo-runtime-failure.mjs", import.meta.url),
+    );
+    const result = spawnSync(process.execPath, [fixturePath], {
+      encoding: "utf8",
+      env: { NO_COLOR: "1" },
+    });
+    const events = result.stdout
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const operation = events.find(
+      (event) => event.type === "runtime.operation.completed",
+    )?.operation as Record<string, unknown> | undefined;
+
+    expect(result.status).toBe(17);
+    expect(operation).toMatchObject({ exit_code: 17, status: "failed" });
+    expect(events.at(-1)).toMatchObject({
+      type: "runtime.proof.failed",
+      error: {
+        message:
+          "Injected Runtime failure. Authorization: Bearer techjam-demo-canary-not-a-secret",
+      },
+    });
+    expect(result.stderr).toBe("");
+  });
+
+  it("maps controlled proof events to Runtime evidence rather than Codex evidence", () => {
+    const traces: TraceDraft[] = [];
+    const parsed = createParsedEvents(
+      {
+        agentId: "agent",
+        workspacePath: "/tmp/workspace",
+        prompt: "controlled failure",
+        threadId: null,
+        executionMode: "demo_runtime_failure",
+        onTrace: (trace) => traces.push(trace),
+      },
+      "container",
+    );
+    parseRunnerEventLine(JSON.stringify({ type: "runtime.proof.started" }), parsed);
+    parseRunnerEventLine(
+      JSON.stringify({
+        type: "runtime.operation.started",
+        operation: { id: "check", command: "node check.mjs", status: "in_progress" },
+      }),
+      parsed,
+    );
+    parseRunnerEventLine(
+      JSON.stringify({
+        type: "runtime.operation.completed",
+        operation: {
+          id: "check",
+          command: "node check.mjs",
+          exit_code: 17,
+          status: "failed",
+        },
+      }),
+      parsed,
+    );
+    parseRunnerEventLine(
+      JSON.stringify({
+        type: "runtime.proof.failed",
+        error: { message: "Injected Runtime failure" },
+      }),
+      parsed,
+    );
+
+    expect(traces.map((trace) => trace.type)).toEqual([
+      "runtime.proof_started",
+      "runtime.operation_started",
+      "runtime.operation_completed",
+      "runtime.proof_failed",
+    ]);
+    expect(traces.every((trace) => trace.source === "runtime")).toBe(true);
+    expect(JSON.stringify(traces)).not.toContain("codex.");
+  });
+
   it("selects the credential-free success executable", () => {
     const config = loadConfig({ NODE_ENV: "test", ARK_API_KEY: "real-secret" });
     const command = localExecutionCommand(
@@ -190,6 +328,46 @@ describe("Codex runner protocol", () => {
     expect(command.bin).toBe(process.execPath);
     expect(command.args.at(-1)).toMatch(/demo-runtime-success\.mjs$/);
     expect(command.args).not.toContain("real-secret");
+  });
+
+  it("runs the credential-free workspace proof with Runtime-owned evidence", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "launchpad-proof-test-"));
+    temporaryDirectories.push(root);
+    const workspace = path.join(root, "workspace");
+    await mkdir(workspace);
+    const config = loadConfig({
+      NODE_ENV: "test",
+      APP_DATA_DIR: path.join(root, "data"),
+      AGENT_WORKSPACE_ROOT: path.join(root, "workspaces"),
+      CODEX_HOME: path.join(root, "codex-home"),
+    });
+    const traces: TraceDraft[] = [];
+    const result = await new CodexRunner(config).run({
+      agentId: "proof-agent",
+      workspacePath: workspace,
+      prompt: "workspace proof",
+      threadId: null,
+      executionMode: "demo_runtime_success",
+      onTrace: (trace) => traces.push(trace),
+    });
+
+    expect(result).toMatchObject({
+      output: "Created and verified recovery-proof.txt through the credential-free Runtime proof.",
+      threadId: null,
+      usage: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
+    });
+    expect(await readFile(path.join(workspace, "recovery-proof.txt"), "utf8")).toBe(
+      "Agent Black Box recovery succeeded\n",
+    );
+    expect(traces.map((trace) => trace.type)).toEqual([
+      "runtime.proof_started",
+      "runtime.operation_started",
+      "runtime.operation_completed",
+      "runtime.file_changed",
+      "runtime.metrics_reported",
+      "runtime.proof_completed",
+    ]);
+    expect(traces.every((trace) => trace.source === "runtime")).toBe(true);
   });
 
   it("ignores malformed and unknown JSONL without creating trace evidence", () => {

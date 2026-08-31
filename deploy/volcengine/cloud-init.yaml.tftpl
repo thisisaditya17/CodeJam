@@ -10,13 +10,21 @@ write_files:
     permissions: "0600"
     encoding: b64
     content: ${runtime_env_b64}
+  - path: /opt/agent-launchpad.repository
+    permissions: "0600"
+    encoding: b64
+    content: ${repository_url_b64}
 
 runcmd:
   - curl -fsSL https://get.docker.com -o /opt/get-docker.sh
+  - echo '${docker_install_script_sha256}  /opt/get-docker.sh' | sha256sum --check --strict
   - sh /opt/get-docker.sh
   - systemctl enable --now docker
-  - mkdir -p /opt/agent-launchpad
-  - git clone --depth 1 --branch '${repository_ref}' '${repository_url}' /opt/agent-launchpad/app
+  - mkdir -p /opt/agent-launchpad/app
+  - git -C /opt/agent-launchpad/app init
+  - git -C /opt/agent-launchpad/app remote add origin "$(cat /opt/agent-launchpad.repository)"
+  - git -C /opt/agent-launchpad/app fetch --depth 1 origin '${repository_ref}'
+  - git -C /opt/agent-launchpad/app checkout --detach FETCH_HEAD
   - cp /opt/agent-launchpad.env /opt/agent-launchpad/app/.env.production
   - mkdir -p /opt/agent-launchpad/app/data /opt/agent-launchpad/app/workspaces /opt/agent-launchpad/app/codex-home
   - chown -R 1000:1000 /opt/agent-launchpad/app/data /opt/agent-launchpad/app/workspaces /opt/agent-launchpad/app/codex-home
