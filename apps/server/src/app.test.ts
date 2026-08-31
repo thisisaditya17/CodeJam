@@ -35,6 +35,35 @@ describe("HTTP boundary", () => {
     await app.close();
   });
 
+  it("omits absolute workspace paths from public Agent responses", async () => {
+    const agentId = "22222222-2222-4222-8222-222222222222";
+    const boundaryService = {
+      ...service,
+      listAgents: () => [
+        {
+          id: agentId,
+          name: "Safe Agent",
+          description: "",
+          instructions: "",
+          status: "ready",
+          workspacePath: "/Users/private-name/workspaces/agent",
+          codexThreadId: null,
+          lastError: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    } as unknown as AgentService;
+    const app = await createApp(loadConfig({ NODE_ENV: "test" }), boundaryService);
+    const response = await app.inject({ method: "GET", url: "/api/agents" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).not.toContain("workspacePath");
+    expect(response.body).not.toContain("/Users/private-name");
+    expect(response.json()).toMatchObject({ agents: [{ id: agentId, name: "Safe Agent" }] });
+    await app.close();
+  });
+
   it("rate-limits repeated Runtime mutation requests", async () => {
     const agentId = "22222222-2222-4222-8222-222222222222";
     const boundaryService = {

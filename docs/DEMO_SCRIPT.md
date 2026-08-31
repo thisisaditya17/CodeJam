@@ -48,7 +48,7 @@ Expand the file-change details.
 
 > The task is visibly invoked through the existing Playground. This is not a
 > static success message: the Runtime writes the requested file, reads it back,
-> verifies the exact content, and emits the pinned event protocol. The complete
+> verifies the exact content, and emits the Runtime-owned proof protocol. The complete
 > path uses zero model tokens and is labelled as a local Runtime proof.
 
 ### 1:08-1:28 - Controlled failure and redaction
@@ -120,6 +120,6 @@ Return to the completed linked retry.
 When the free-quota model is active, select the persisted `Live Model Builder`
 Run and show its `codex.usage_reported` details. Point out that the trace keeps
 the intermediate failed test command even though the model's final message
-claimed success. Do not rerun the model task solely for the demo; use the
+claimed success, and show the **Completed with warnings** card. Do not rerun the model task solely for the demo; use the
 persisted Run and the zero-inference verifier recorded in
 `MODELARK_LIVE_VERIFICATION.md`.

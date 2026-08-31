@@ -96,6 +96,15 @@ function TracePanel({
   const boundaryFailure =
     events.find((event) => event.type === "runtime.failed") ??
     [...events].reverse().find((event) => event.status === "failed");
+  const failedOperations = events.filter(
+    (event) =>
+      event.status === "failed" &&
+      ["codex.command_completed", "runtime.operation_completed"].includes(event.type),
+  );
+  const completedWithWarnings =
+    selectedRun?.status === "completed" && failedOperations.length > 0;
+  const controlledProof =
+    selectedRun !== null && selectedRun.executionMode !== "codex";
 
   return (
     <aside className="trace-panel" aria-label="Agent Black Box trace">
@@ -142,6 +151,13 @@ function TracePanel({
         Bounded safe capture · {redactionCount} sensitive value{redactionCount === 1 ? "" : "s"} redacted
       </div>
 
+      {controlledProof ? (
+        <div className="trace-proof-badge" role="status">
+          <strong>Controlled Runtime proof</strong>
+          <span>No model inference was used for this Run.</span>
+        </div>
+      ) : null}
+
       {selectedRun?.failureCode && (
         <div className="trace-failure-card" role="status">
           <span>Failure boundary</span>
@@ -152,6 +168,17 @@ function TracePanel({
           ) : null}
         </div>
       )}
+
+      {completedWithWarnings ? (
+        <div className="trace-warning-card" role="status">
+          <span>Completed with warnings</span>
+          <strong>
+            The Runtime completed, but this trace contains {failedOperations.length} failed
+            operation{failedOperations.length === 1 ? "" : "s"}.
+          </strong>
+          <p>{failedOperations[0]?.summary}</p>
+        </div>
+      ) : null}
 
       {selectedRun?.recoveryMode && selectedRun.recoveryMode !== "none" ? (
         <div className="recovery-mode-badge">
@@ -754,7 +781,7 @@ export default function App() {
                   />
                 </label>
                 <div className="panel-footer">
-                  <code>{selected.workspacePath}</code>
+                  <code>Agent workspace · {selected.id.slice(0, 8)}</code>
                   <button className="button button-primary" disabled={busy}>
                     {busy ? <Spinner /> : "Save changes"}
                   </button>

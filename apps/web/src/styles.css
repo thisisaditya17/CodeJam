@@ -751,6 +751,27 @@ textarea:focus {
   font-size: 10px;
 }
 
+.trace-proof-badge {
+  margin: 10px 14px 0;
+  padding: 9px 10px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid #d8d1f3;
+  border-radius: 9px;
+  color: #5847ab;
+  background: #efecfb;
+}
+
+.trace-proof-badge strong {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.trace-proof-badge span {
+  font-size: 8px;
+}
+
 .trace-failure-card {
   margin: 10px 14px 0;
   padding: 10px;
@@ -790,6 +811,38 @@ textarea:focus {
   display: block;
   margin-top: 5px;
   color: #a36a63;
+  font-size: 8px;
+}
+
+.trace-warning-card {
+  margin: 10px 14px 0;
+  padding: 10px;
+  border: 1px solid #e8d59c;
+  border-radius: 9px;
+  color: #735818;
+  background: #fff6d9;
+}
+
+.trace-warning-card span,
+.trace-warning-card strong {
+  display: block;
+}
+
+.trace-warning-card span {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.trace-warning-card strong {
+  margin-top: 4px;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.trace-warning-card p {
+  margin: 5px 0 0;
   font-size: 8px;
 }
 

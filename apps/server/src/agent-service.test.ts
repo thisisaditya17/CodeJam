@@ -164,9 +164,9 @@ describe("Agent lifecycle", () => {
     const service = await makeService({
       run: async (request) => {
         request.onTrace?.({
-          dedupeKey: "codex.turn_failed",
-          type: "codex.turn_failed",
-          source: "codex",
+          dedupeKey: "runtime.proof_failed",
+          type: "runtime.proof_failed",
+          source: "runtime",
           status: "failed",
           summary:
             "Injected failure. Authorization: Bearer techjam-demo-canary-not-a-secret",
@@ -207,18 +207,18 @@ describe("Agent lifecycle", () => {
         requests.push(request);
         if (request.executionMode === "demo_runtime_failure") {
           request.onTrace?.({
-            dedupeKey: "codex.turn_failed",
-            type: "codex.turn_failed",
-            source: "codex",
+            dedupeKey: "runtime.proof_failed",
+            type: "runtime.proof_failed",
+            source: "runtime",
             status: "failed",
             summary: "Controlled failure",
           });
           throw new RunExecutionError("nonzero_exit", "Controlled failure", 17);
         }
         request.onTrace?.({
-          dedupeKey: "codex.turn_completed",
-          type: "codex.turn_completed",
-          source: "codex",
+          dedupeKey: "runtime.proof_completed",
+          type: "runtime.proof_completed",
+          source: "runtime",
           status: "succeeded",
           summary: "Credential-free recovery completed.",
         });
@@ -266,6 +266,53 @@ describe("Agent lifecycle", () => {
     expect(service.getMessages(agent.id).map((message) => message.role)).toEqual([
       "assistant",
     ]);
+    expect(service.getAgent(agent.id).codexThreadId).toBeNull();
+  });
+
+  it("retries a failed workspace proof without switching to Codex or requiring Ark", async () => {
+    const requests: RunnerRequest[] = [];
+    const service = await makeService(
+      {
+        run: async (request) => {
+          requests.push(request);
+          if (requests.length === 1) {
+            throw new RunExecutionError("nonzero_exit", "Workspace proof failed", 17);
+          }
+          return {
+            output: "Workspace proof recovered",
+            threadId: "must-not-be-stored",
+            usage: { inputTokens: 0, outputTokens: 0 },
+          };
+        },
+        cancel: async () => false,
+        isAvailable: async () => true,
+      },
+      false,
+    );
+    const agent = await service.createAgent({ name: "Offline retry" });
+    const { run: failed } = await service.sendMessage(
+      agent.id,
+      PLAYGROUND_WORKSPACE_PROOF_PROMPT,
+      "workspace_proof",
+    );
+    await expect.poll(() => service.getRun(failed.id).status).toBe("failed");
+
+    const { run: retry } = await service.retryRun(
+      failed.id,
+      "77777777-7777-4777-8777-777777777777",
+    );
+    await expect.poll(() => service.getRun(retry.id).status).toBe("completed");
+
+    expect(requests.map((request) => request.executionMode)).toEqual([
+      "demo_runtime_success",
+      "demo_runtime_success",
+    ]);
+    expect(service.getRun(retry.id)).toMatchObject({
+      retryOfRunId: failed.id,
+      executionMode: "demo_runtime_success",
+      recoveryMode: "workspace_only",
+      threadIdAtStart: null,
+    });
     expect(service.getAgent(agent.id).codexThreadId).toBeNull();
   });
 

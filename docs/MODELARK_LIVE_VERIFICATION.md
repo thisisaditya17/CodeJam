@@ -3,6 +3,7 @@
 ## Guardrails
 
 - Region: Asia Pacific (Johor), `ap-southeast-1`
+- Responses API base URL: `https://ark.ap-southeast.bytepluses.com/api/v3`
 - Model: `seed-2-0-lite-260428`
 - Billing mode observed before inference: Free Credits Only Mode
 - Account behavior observed: free usage with automatic model suspension when

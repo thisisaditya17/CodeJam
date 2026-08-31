@@ -54,7 +54,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   deleteAgent: (id: string) =>
-    request<{ archivedWorkspace: string }>("/api/agents/" + id, {
+    request<{ archived: true }>("/api/agents/" + id, {
       method: "DELETE",
     }),
   startAgent: (id: string) =>

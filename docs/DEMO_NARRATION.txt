@@ -2,12 +2,12 @@ Agent platforms often stop at completed or failed. Agent Black Box turns each ob
 
 The existing Playground, Fastify control plane, JSON store, workspace, and Runtime lifecycle remain intact. Observable events cross one allowlisted adapter and one redaction boundary before deterministic sequence assignment and persistence. Raw command output and hidden reasoning are deliberately excluded.
 
-I create Recovery Builder in the existing frontend, select the fixed local Runtime task in the Playground, and press Send. The human task remains visible. The Docker Runtime writes recovery-proof dot text, reads it back, verifies the requested content, and emits real command, file-change, usage, and terminal evidence. This is a real workspace action with zero model tokens, not a static success message or model-inference claim.
+I create Recovery Builder in the existing frontend, select the fixed local Runtime task in the Playground, and press Send. The human task remains visible. The Docker Runtime writes recovery-proof dot text, reads it back, verifies the requested content, and emits Runtime-owned operation, file-change, metrics, and terminal evidence. This is a real workspace action with zero model tokens, not a static success message or model-inference claim.
 
 Next is the controlled failure. It travels through the same container, parser, store, API, polling, and timeline path. The command fails first, the Runtime exits with code seventeen, and the final boundary is classified deterministically. A safe canary exists only in the source event; the trace store, API, and browser receive the redacted marker.
 
 Retry never rewrites failure into success. It creates a new immutable attempt from the persisted workspace, records workspace-only recovery, enforces UUID idempotency and one direct child, and keeps both attempts navigable. The original failure remains inspectable while attempt two completes the real file action.
 
-Forty-six automated tests cover the Playground proof boundary, redaction, malformed events, bounded storage, historical data, restart interruption, failure classification, concurrency, duplicate retry, and both Runtime providers. The clean-clone build passes and the production dependency audit reports zero vulnerabilities.
+The repository quality gate covers the Playground proof boundary, redaction, malformed events, bounded storage, historical data, restart interruption, failure classification, concurrency, duplicate retry, both Runtime providers, typechecking, and production builds. Final results are recorded against the exact public submission commit.
 
 Agent Black Box makes Agent infrastructure understandable without pretending to observe what it cannot. Every Run tells the truth.

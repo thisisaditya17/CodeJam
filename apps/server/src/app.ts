@@ -10,6 +10,7 @@ import type { AppConfig } from "./config.js";
 import { HttpError } from "./errors.js";
 import type { AgentService } from "./agent-service.js";
 import { redactText } from "./redaction.js";
+import type { Agent } from "./types.js";
 
 const agentIdParams = z.object({ id: z.string().uuid() });
 const runIdParams = z.object({ id: z.string().uuid() });
@@ -33,6 +34,12 @@ const retryRunBody = z.object({ idempotencyKey: z.string().uuid() });
 const mutationRateLimit = (max = 60) => ({
   config: { rateLimit: { max, timeWindow: "1 minute" } },
 });
+
+function agentResponse(agent: Agent): Omit<Agent, "workspacePath"> {
+  const { workspacePath, ...response } = agent;
+  void workspacePath;
+  return response;
+}
 
 export async function createApp(
   config: AppConfig,
@@ -124,7 +131,9 @@ export async function createApp(
 
   app.get("/api/system", async () => service.systemInfo());
 
-  app.get("/api/agents", async () => ({ agents: service.listAgents() }));
+  app.get("/api/agents", async () => ({
+    agents: service.listAgents().map(agentResponse),
+  }));
 
   app.post(
     "/api/agents",
@@ -132,13 +141,13 @@ export async function createApp(
     async (request, reply) => {
       const body = createAgentBody.parse(request.body);
       const agent = await service.createAgent(body);
-      return reply.code(201).send({ agent });
+      return reply.code(201).send({ agent: agentResponse(agent) });
     },
   );
 
   app.get("/api/agents/:id", async (request) => {
     const { id } = agentIdParams.parse(request.params);
-    return { agent: service.getAgent(id) };
+    return { agent: agentResponse(service.getAgent(id)) };
   });
 
   app.patch(
@@ -147,7 +156,7 @@ export async function createApp(
     async (request) => {
       const { id } = agentIdParams.parse(request.params);
       const body = updateAgentBody.parse(request.body);
-      return { agent: await service.updateAgent(id, body) };
+      return { agent: agentResponse(await service.updateAgent(id, body)) };
     },
   );
 
@@ -156,7 +165,8 @@ export async function createApp(
     mutationRateLimit(),
     async (request) => {
       const { id } = agentIdParams.parse(request.params);
-      return service.deleteAgent(id);
+      await service.deleteAgent(id);
+      return { archived: true };
     },
   );
 
@@ -165,7 +175,7 @@ export async function createApp(
     mutationRateLimit(),
     async (request) => {
       const { id } = agentIdParams.parse(request.params);
-      return { agent: await service.startAgent(id) };
+      return { agent: agentResponse(await service.startAgent(id)) };
     },
   );
 
@@ -174,7 +184,7 @@ export async function createApp(
     mutationRateLimit(),
     async (request) => {
       const { id } = agentIdParams.parse(request.params);
-      return { agent: await service.stopAgent(id) };
+      return { agent: agentResponse(await service.stopAgent(id)) };
     },
   );
 

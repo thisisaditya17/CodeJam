@@ -50,11 +50,12 @@ newer Run fields normalize to safe defaults when loaded.
 
 ## Evidence mapping
 
-The pinned JSONL adapter recognizes thread and turn lifecycle, command
-execution, file changes, usage, explicit errors, and final messages. Final
-messages continue to support the existing Playground but are not copied into
-trace metadata. Reasoning items, raw command output, arbitrary MCP payloads,
-and unknown event objects are not persisted.
+The pinned Codex JSONL adapter recognizes thread and turn lifecycle, command
+execution, file changes, usage, explicit errors, and final messages. Controlled
+proofs use a separate Runtime-owned JSONL allowlist, so their events are never
+presented as Codex inference. Final messages continue to support the existing
+Playground but are not copied into trace metadata. Reasoning items, raw command
+output, arbitrary MCP payloads, and unknown event objects are not persisted.
 
 ## Redaction scope
 
@@ -80,19 +81,20 @@ before it reaches the Run, Agent, trace, or API response.
 
 ## Controlled failure proof
 
-The fixed failure executable emits valid pinned JSONL, reports a fake canary in
-an error, and exits with code 17. Both Runner providers select it explicitly;
+The fixed failure executable spawns a deterministic child check, derives its
+operation result from the actual exit code 17, and emits Runtime-owned JSONL
+with a fake canary in the error. Both Runner providers select it explicitly;
 the container path does not forward `ARK_API_KEY`. The resulting evidence uses
-the same parser, recorder, JSON store, API, polling, and timeline as a normal
-Run. This makes the negative case deterministic without fabricating a success
-or relying on a transient external outage.
+the shared Runner adapter, recorder, JSON store, API, polling, and timeline as a
+normal Run. This makes the negative case deterministic without fabricating a
+success or relying on a transient external outage.
 
 ## Credential-free Playground task and linked recovery
 
 When ModelArk is unavailable, the success fixture performs a real write and
 read-back verification of `recovery-proof.txt` inside the selected Agent
-workspace. It emits command, file-change, usage, and terminal JSONL evidence
-with zero model tokens. A user selects its fixed, visible task in the existing
+workspace. It emits Runtime-owned operation, file-change, metrics, and terminal
+JSONL evidence with zero model tokens. A user selects its fixed, visible task in the existing
 Playground and presses Send, so the normal user-message, Run, Runtime, trace,
 and assistant-message lifecycle remains observable. The backend accepts only
 that exact task for this proof mode. The UI and documentation identify it as a
@@ -104,7 +106,9 @@ mutation. The caller supplies a UUID idempotency key: repeating the same key
 returns the existing attempt, while a different key conflicts. Controlled
 failure retries select the credential-free success Runtime; real model retries
 reuse a thread only when it existed before the failed attempt. Every retry
-reuses the persisted workspace and exposes its actual recovery mode.
+reuses the persisted workspace and exposes its actual recovery mode. A failed
+credential-free proof also retries on the credential-free proof path rather
+than switching to Codex.
 
 ## Live ModelArk verification
 

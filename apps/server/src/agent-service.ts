@@ -346,7 +346,7 @@ export class AgentService {
       }
 
       const executionMode: RunnerExecutionMode =
-        source.executionMode === "demo_runtime_failure" ? "demo_runtime_success" : "codex";
+        source.executionMode === "codex" ? "codex" : "demo_runtime_success";
       if (executionMode === "codex" && !isArkConfigured(this.config)) {
         throw new HttpError(
           503,

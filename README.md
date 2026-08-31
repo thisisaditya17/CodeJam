@@ -18,7 +18,8 @@ store, disposable Runtime containers, or ModelArk integration.
 ## What the middleware proves
 
 - A real frontend-to-control-plane-to-Runtime path produces ordered evidence.
-- JSONL events are mapped using the pinned Runtime protocol rather than inferred.
+- Codex JSONL is mapped from the pinned protocol; controlled proofs use a
+  separate Runtime-owned allowlist rather than Codex labels.
 - Reasoning and raw command output are never added to the trace store.
 - Trace strings and failure messages are bounded and centrally redacted.
 - A controlled process/container failure traverses the same Runner, parser,
@@ -76,9 +77,12 @@ store, disposable Runtime containers, or ModelArk integration.
 - Node.js 22+
 - npm 10+
 - Docker, Colima, or Podman
-- A Volcengine Ark API key and endpoint that supports the Responses API
+- A BytePlus ModelArk API key, Responses-capable endpoint, and matching regional
+  base URL only for model-backed Agent tasks
 
 Codex CLI is included in the Runtime image and is not required on the host.
+ModelArk credentials are not required for the credential-free workspace,
+trace, controlled-failure, and linked-recovery demonstration.
 
 ## Local browser SOP
 
@@ -99,8 +103,8 @@ Runtime image.
 ### 2. Clone the repository
 
 ```bash
-git clone <repository-url> volc-agent-launchpad
-cd volc-agent-launchpad
+git clone https://github.com/thisisaditya17/CodeJam.git
+cd CodeJam
 ```
 
 Skip this step when already working from the repository root.
@@ -108,13 +112,22 @@ Skip this step when already working from the repository root.
 ### 3. Start the POC
 
 ```bash
-ARK_API_KEY=your-ark-api-key \
-ARK_MODEL=ep-your-endpoint-id \
 npm run poc
 ```
 
 The first run installs Node.js dependencies and builds the Runtime image. The
-script automatically selects Docker, Colima, or Podman.
+script automatically selects Docker, Colima, or Podman. This credential-free
+startup supports the workspace proof, controlled failure, and linked retry.
+
+To enable model-backed Agent tasks, provide credentials and the Responses API
+base URL shown for the same ModelArk region:
+
+```bash
+ARK_API_KEY=your-ark-api-key \
+ARK_MODEL=ep-your-endpoint-id \
+ARK_BASE_URL=https://ark.ap-southeast.bytepluses.com/api/v3 \
+npm run poc
+```
 
 ### 4. Open the browser
 
@@ -144,13 +157,13 @@ and keeps previous Runs inspectable.
 
 1. Create or select an Agent.
 2. Select **Run controlled failure proof** in the Black Box panel.
-3. Inspect the ten-event failure chain from queueing through the terminal Run.
+3. Inspect the nine-event failure chain from queueing through the terminal Run.
 4. Confirm the explicit canary is displayed only as `[REDACTED]`.
 
-The fixture is labelled as injected evidence. It emits the pinned JSONL shape
-from a real child process or disposable Runtime container and exits with code
-17. It does not call ModelArk, execute an external write, or receive the Ark
-credential.
+The fixture is labelled as injected evidence. Its Runtime-owned JSONL is
+derived from a real child process that exits with code 17, whether it runs on
+the host-process or disposable-container Runner path. It does not call
+ModelArk, execute an external write, or receive the Ark credential.
 
 ### Run without an active model
 
@@ -268,9 +281,9 @@ cp deploy/volcengine/terraform.tfvars.example \
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ARK_API_KEY` | Required | Ark model API key. |
-| `ARK_MODEL` | Required | Responses-capable endpoint or model ID. |
-| `ARK_BASE_URL` | Beijing v3 endpoint | Ark OpenAI-compatible API URL. |
+| `ARK_API_KEY` | Empty | ModelArk API key; required only for model-backed tasks. |
+| `ARK_MODEL` | Empty | Responses-capable endpoint or model ID; required only for model-backed tasks. |
+| `ARK_BASE_URL` | BytePlus AP v3 endpoint | Region-matched ModelArk Responses API base URL. |
 | `APP_AUTH_TOKEN` | Empty on loopback | Shared demo token; use 24+ random characters remotely. |
 | `RUNTIME_PROVIDER` | `local-process` | `container` for disposable local Runtime containers. |
 | `CODEX_SANDBOX_MODE` | `workspace-write` | Codex inner sandbox mode. |

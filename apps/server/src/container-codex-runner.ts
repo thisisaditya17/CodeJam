@@ -10,7 +10,7 @@ import type { AppConfig } from "./config.js";
 import {
   buildCodexArgs,
   createParsedEvents,
-  parseCodexEventLine,
+  parseRunnerEventLine,
   resolveRunCodexHome,
 } from "./codex-runner.js";
 import { RunCancelledError, RunExecutionError } from "./errors.js";
@@ -216,7 +216,7 @@ export class ContainerCodexRunner implements AgentRunner {
         stdout += chunk.toString("utf8");
         const lines = stdout.split(/\r?\n/);
         stdout = lines.pop() ?? "";
-        for (const line of lines) parseCodexEventLine(line, parsed);
+        for (const line of lines) parseRunnerEventLine(line, parsed);
       } else {
         stderr += chunk.toString("utf8");
         if (stderr.length > 16_384) stderr = stderr.slice(-16_384);
@@ -243,7 +243,7 @@ export class ContainerCodexRunner implements AgentRunner {
         const detail = error instanceof Error ? error.message : String(error);
         throw new RunExecutionError("spawn_error", "Runtime failed to start: " + detail);
       }
-      if (stdout.trim()) parseCodexEventLine(stdout.trim(), parsed);
+      if (stdout.trim()) parseRunnerEventLine(stdout.trim(), parsed);
       if (active.cancelled) throw new RunCancelledError();
       if (active.timedOut) {
         throw new RunExecutionError(

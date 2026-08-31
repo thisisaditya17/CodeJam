@@ -53,6 +53,7 @@ export interface ParsedEvents {
   provider?: "local-process" | "container" | undefined;
   itemStartedAt?: Map<string, number> | undefined;
   turnStartedAt?: number | null | undefined;
+  executionMode?: RunnerRequest["executionMode"] | undefined;
 }
 
 export function createParsedEvents(
@@ -68,6 +69,7 @@ export function createParsedEvents(
     provider,
     itemStartedAt: new Map<string, number>(),
     turnStartedAt: null,
+    executionMode: request.executionMode,
   };
 }
 
@@ -306,6 +308,167 @@ export function parseCodexEventLine(line: string, parsed: ParsedEvents): void {
   }
 }
 
+export function parseRuntimeProofEventLine(line: string, parsed: ParsedEvents): void {
+  let event: Record<string, unknown>;
+  try {
+    event = JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+
+  if (event.type === "runtime.proof.started") {
+    parsed.turnStartedAt = Date.now();
+    emitTrace(parsed, {
+      dedupeKey: "runtime.proof_started",
+      type: "runtime.proof_started",
+      source: "runtime",
+      status: "running",
+      summary: "Controlled Runtime proof started.",
+      metadata: providerMetadata(parsed),
+    });
+  }
+
+  if (
+    event.type === "runtime.operation.started" &&
+    event.operation &&
+    typeof event.operation === "object"
+  ) {
+    const operation = event.operation as Record<string, unknown>;
+    if (typeof operation.id === "string" && typeof operation.command === "string") {
+      parsed.itemStartedAt ??= new Map<string, number>();
+      parsed.itemStartedAt.set(operation.id, Date.now());
+      emitTrace(parsed, {
+        dedupeKey: "runtime.operation_started:" + operation.id,
+        type: "runtime.operation_started",
+        source: "runtime",
+        status: "running",
+        summary: "Controlled Runtime operation started.",
+        metadata: {
+          itemId: operation.id,
+          commandPreview: operation.command,
+          ...providerMetadata(parsed),
+        },
+      });
+    }
+  }
+
+  if (
+    event.type === "runtime.operation.completed" &&
+    event.operation &&
+    typeof event.operation === "object"
+  ) {
+    const operation = event.operation as Record<string, unknown>;
+    if (typeof operation.id === "string" && typeof operation.command === "string") {
+      const startedAt = parsed.itemStartedAt?.get(operation.id);
+      emitTrace(parsed, {
+        dedupeKey: "runtime.operation_completed:" + operation.id,
+        type: "runtime.operation_completed",
+        source: "runtime",
+        status: itemStatus(operation.status),
+        summary:
+          operation.status === "failed"
+            ? "Controlled Runtime operation failed."
+            : "Controlled Runtime operation completed.",
+        ...(startedAt !== undefined ? { durationMs: Date.now() - startedAt } : {}),
+        metadata: {
+          itemId: operation.id,
+          commandPreview: operation.command,
+          ...(typeof operation.exit_code === "number"
+            ? { exitCode: operation.exit_code }
+            : {}),
+          ...providerMetadata(parsed),
+        },
+      });
+    }
+  }
+
+  if (event.type === "runtime.file.changed") {
+    emitTrace(parsed, {
+      dedupeKey: "runtime.file_changed",
+      type: "runtime.file_changed",
+      source: "runtime",
+      status: "succeeded",
+      summary: "Controlled Runtime changed workspace files.",
+      metadata: {
+        fileChanges: fileChanges(event.changes),
+        ...providerMetadata(parsed),
+      },
+    });
+  }
+
+  if (event.type === "runtime.message" && typeof event.text === "string") {
+    parsed.messages.push(event.text);
+  }
+
+  if (event.type === "runtime.proof.completed") {
+    const usage = event.usage;
+    if (usage && typeof usage === "object") {
+      const counts = usage as Record<string, unknown>;
+      parsed.usage = {
+        ...(typeof counts.input_tokens === "number"
+          ? { inputTokens: counts.input_tokens }
+          : {}),
+        ...(typeof counts.cached_input_tokens === "number"
+          ? { cachedInputTokens: counts.cached_input_tokens }
+          : {}),
+        ...(typeof counts.output_tokens === "number"
+          ? { outputTokens: counts.output_tokens }
+          : {}),
+      };
+      emitTrace(parsed, {
+        dedupeKey: "runtime.metrics_reported",
+        type: "runtime.metrics_reported",
+        source: "runtime",
+        status: "info",
+        summary: "Controlled Runtime proof reported bounded usage metrics.",
+        metadata: { usage: parsed.usage, ...providerMetadata(parsed) },
+      });
+    }
+    emitTrace(parsed, {
+      dedupeKey: "runtime.proof_completed",
+      type: "runtime.proof_completed",
+      source: "runtime",
+      status: "succeeded",
+      summary: "Controlled Runtime proof completed.",
+      ...(parsed.turnStartedAt != null
+        ? { durationMs: Date.now() - parsed.turnStartedAt }
+        : {}),
+      metadata: providerMetadata(parsed),
+    });
+  }
+
+  if (event.type === "runtime.proof.failed") {
+    const error =
+      event.error && typeof event.error === "object"
+        ? (event.error as Record<string, unknown>)
+        : null;
+    const message =
+      error && typeof error.message === "string"
+        ? error.message
+        : "Controlled Runtime proof failed without detail";
+    parsed.errors.push(message);
+    emitTrace(parsed, {
+      dedupeKey: "runtime.proof_failed",
+      type: "runtime.proof_failed",
+      source: "runtime",
+      status: "failed",
+      summary: message,
+      ...(parsed.turnStartedAt != null
+        ? { durationMs: Date.now() - parsed.turnStartedAt }
+        : {}),
+      metadata: providerMetadata(parsed),
+    });
+  }
+}
+
+export function parseRunnerEventLine(line: string, parsed: ParsedEvents): void {
+  if (parsed.executionMode && parsed.executionMode !== "codex") {
+    parseRuntimeProofEventLine(line, parsed);
+    return;
+  }
+  parseCodexEventLine(line, parsed);
+}
+
 export function localExecutionCommand(
   request: RunnerRequest,
   config: AppConfig,
@@ -423,7 +586,7 @@ export class CodexRunner implements AgentRunner {
         const lines = stdout.split(/\r?\n/);
         stdout = lines.pop() ?? "";
         for (const line of lines) {
-          parseCodexEventLine(line, parsed);
+          parseRunnerEventLine(line, parsed);
         }
       } else {
         stderr += chunk.toString("utf8");
@@ -454,7 +617,7 @@ export class CodexRunner implements AgentRunner {
         throw new RunExecutionError("spawn_error", "Runtime failed to start: " + detail);
       }
       if (stdout.trim()) {
-        parseCodexEventLine(stdout.trim(), parsed);
+        parseRunnerEventLine(stdout.trim(), parsed);
       }
       if (active.cancelled) {
         throw new RunCancelledError();

@@ -111,11 +111,9 @@ does not use an LLM.
   final summary omitted. A zero-inference post-Run verifier confirmed the
   corrected files pass, demonstrating why observable evidence is more
   trustworthy than a terminal summary alone.
-- Forty-six automated tests pass, the production build succeeds, and the
-  production dependency audit reports zero vulnerabilities.
-- A fresh clone of the public default branch passes typechecking, all 46 tests,
-  both production builds, the production dependency audit, and Docker Compose
-  configuration validation.
+- The repository quality gate covers static security checks, typechecking,
+  focused server tests, and both production builds. Final results should be
+  recorded against the exact public submission commit after branch packaging.
 
 ## What was learned
 
