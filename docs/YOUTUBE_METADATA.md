@@ -1,6 +1,8 @@
 # YouTube upload metadata
 
-Public video: <https://youtu.be/TnMpTMwM82U>
+Submission demo: <https://youtu.be/fpMajtUak_E>
+
+Short introduction: <https://youtu.be/TnMpTMwM82U>
 
 ## Title
 
@@ -14,12 +16,11 @@ Runtime lifecycle, commands, file changes, duration, usage, explicit failure
 boundaries, and immutable linked retries without exposing hidden reasoning or
 raw command output.
 
-This demonstration creates an Agent in the existing frontend, sends a fixed
-credential-free workspace task through the Playground, shows the resulting
-observable timeline, triggers a controlled non-zero Runtime failure with
-server-side redaction, and recovers through a linked retry from the persisted
-workspace. The proof paths use the same Runner, parser, store, API, polling,
-and timeline components as ordinary Runs and do not use model inference.
+The full-screen demonstration navigates the existing frontend, creates an
+Agent, sends a credential-free workspace task through the Playground, and
+shows the resulting observable timeline. The same repository also includes a
+deterministic non-zero Runtime failure with server-side redaction and a linked
+retry from the persisted workspace.
 
 The product's primary path is model-backed: ordinary Playground prompts run
 through Codex and ModelArk. The controlled paths shown here are explicitly
@@ -30,16 +31,6 @@ Run, its usage ledger, and the trace evidence that distinguishes an
 intermediate failed command from the model's optimistic final summary.
 
 Repository: https://github.com/thisisaditya17/CodeJam
-
-Chapters:
-
-0:00 Problem, architecture, and truthful boundary
-0:04 Frontend Agent creation
-0:09 Credential-free workspace proof
-0:15 Ordered Runtime evidence
-0:23 Controlled failure and redaction
-0:33 Linked retry and immutable history
-0:42 Conclusion
 
 TikTok TechJam 2026 — Track 1: Agent Launchpad
 

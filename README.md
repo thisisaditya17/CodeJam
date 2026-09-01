@@ -6,7 +6,9 @@ Operators can see control-plane lifecycle, Runtime boundaries, command and file
 evidence, model usage, and the most specific failure boundary the platform can
 honestly support.
 
-**Public demo:** [Watch the 47-second Agent Black Box walkthrough](https://youtu.be/TnMpTMwM82U)
+**Submission demo:** [Watch the full Agent Black Box app demonstration](https://youtu.be/fpMajtUak_E)
+
+**Short introduction:** [Watch the 47-second product overview](https://youtu.be/TnMpTMwM82U)
 
 The project extends the TikTok TechJam 2026 Track 1 starter without replacing
 its Agent CRUD, Playground, persistent workspaces, resumable sessions, JSON
