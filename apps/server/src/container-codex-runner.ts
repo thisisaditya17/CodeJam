@@ -254,7 +254,8 @@ export class ContainerCodexRunner implements AgentRunner {
       if (active.outputExceeded) {
         throw new RunExecutionError(
           "output_limit",
-          "Codex output exceeded CODEX_MAX_OUTPUT_BYTES",
+          (request.executionMode === "codex" ? "Codex" : "Controlled Runtime proof") +
+            " output exceeded CODEX_MAX_OUTPUT_BYTES",
         );
       }
       if (exitCode !== 0) {
@@ -274,7 +275,9 @@ export class ContainerCodexRunner implements AgentRunner {
         const detail = parsed.errors.at(-1);
         throw new RunExecutionError(
           detail ? "codex_error" : "no_agent_message",
-          detail ?? "Codex completed without an agent message",
+          detail ??
+            (request.executionMode === "codex" ? "Codex" : "Controlled Runtime proof") +
+              " completed without an agent message",
         );
       }
       return { output, threadId: parsed.threadId, usage: parsed.usage };

@@ -570,6 +570,8 @@ export class CodexRunner implements AgentRunner {
     this.active.set(request.agentId, active);
 
     const parsed = createParsedEvents(request, "local-process");
+    const runtimeLabel =
+      request.executionMode === "codex" ? "Codex" : "Controlled Runtime proof";
     let stdout = "";
     let stderr = "";
     let totalBytes = 0;
@@ -625,20 +627,20 @@ export class CodexRunner implements AgentRunner {
       if (active.timedOut) {
         throw new RunExecutionError(
           "timeout",
-          "Codex timed out after " + this.config.codexTimeoutMs + " ms",
+          runtimeLabel + " timed out after " + this.config.codexTimeoutMs + " ms",
         );
       }
       if (active.outputExceeded) {
         throw new RunExecutionError(
           "output_limit",
-          "Codex output exceeded CODEX_MAX_OUTPUT_BYTES",
+          runtimeLabel + " output exceeded CODEX_MAX_OUTPUT_BYTES",
         );
       }
       if (exitCode !== 0) {
         const detail = parsed.errors.at(-1) ?? stderr.trim() ?? "No error detail";
         throw new RunExecutionError(
           "nonzero_exit",
-          "Codex exited with code " + exitCode + ": " + detail,
+          runtimeLabel + " exited with code " + exitCode + ": " + detail,
           exitCode,
         );
       }
@@ -647,7 +649,7 @@ export class CodexRunner implements AgentRunner {
         const detail = parsed.errors.at(-1);
         throw new RunExecutionError(
           detail ? "codex_error" : "no_agent_message",
-          detail ?? "Codex completed without an agent message",
+          detail ?? runtimeLabel + " completed without an agent message",
         );
       }
       return {

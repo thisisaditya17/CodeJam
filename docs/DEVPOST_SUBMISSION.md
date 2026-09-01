@@ -37,6 +37,11 @@ by the pinned Runtime protocol. Hidden reasoning and raw command output are
 excluded. Strings and metadata pass through one server-side allowlist, bounds,
 and redaction layer before they reach storage, APIs, logs, or the browser.
 
+Ordinary Playground prompts use the real Codex/ModelArk execution path and can
+perform arbitrary workspace tasks. Controlled proofs cannot be selected by an
+arbitrary prompt: they require explicit proof actions and exist only to make
+the positive and negative verification paths reproducible for reviewers.
+
 The project includes two reproducible Runtime proofs:
 
 - a fixed, visible Playground task that performs and verifies a real workspace

@@ -19,6 +19,10 @@ server-side redaction, and recovers through a linked retry from the persisted
 workspace. The proof paths use the same Runner, parser, store, API, polling,
 and timeline components as ordinary Runs and do not use model inference.
 
+The product's primary path is model-backed: ordinary Playground prompts run
+through Codex and ModelArk. The controlled paths shown here are explicitly
+selected deterministic verification fixtures, not the default execution mode.
+
 The repository also includes a separately verified live free-quota ModelArk
 Run, its usage ledger, and the trace evidence that distinguishes an
 intermediate failed command from the model's optimistic final summary.
@@ -28,11 +32,12 @@ Repository: https://github.com/thisisaditya17/CodeJam
 Chapters:
 
 0:00 Problem, architecture, and truthful boundary
-0:28 Frontend Agent creation and Playground task
-0:47 Verified workspace success
-1:08 Controlled failure and redaction
-1:28 Linked retry and immutable history
-1:40 Verification and conclusion
+0:04 Frontend Agent creation
+0:09 Credential-free workspace proof
+0:15 Ordered Runtime evidence
+0:23 Controlled failure and redaction
+0:33 Linked retry and immutable history
+0:42 Conclusion
 
 TikTok TechJam 2026 — Track 1: Agent Launchpad
 

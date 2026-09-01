@@ -442,8 +442,8 @@ export class AgentService {
           : null,
       runtime:
         this.config.runtimeProvider === "container"
-          ? "Codex CLI in " + this.config.containerEngine + " Runtime"
-          : "Codex CLI in application container",
+          ? "Codex CLI in disposable " + this.config.containerEngine + " Runtime"
+          : "Codex CLI process Runtime",
     };
   }
 

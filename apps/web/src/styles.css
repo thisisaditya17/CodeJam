@@ -772,6 +772,27 @@ textarea:focus {
   font-size: 8px;
 }
 
+.trace-model-badge {
+  margin: 10px 14px 0;
+  padding: 9px 10px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid #c7dfd3;
+  border-radius: 9px;
+  color: #286c50;
+  background: #e9f6ef;
+}
+
+.trace-model-badge strong {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.trace-model-badge span {
+  font-size: 8px;
+}
+
 .trace-failure-card {
   margin: 10px 14px 0;
   padding: 10px;

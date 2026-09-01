@@ -370,6 +370,33 @@ describe("Codex runner protocol", () => {
     expect(traces.every((trace) => trace.source === "runtime")).toBe(true);
   });
 
+  it("labels a controlled child-process failure as Runtime evidence", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "launchpad-failure-label-test-"));
+    temporaryDirectories.push(root);
+    const workspace = path.join(root, "workspace");
+    await mkdir(workspace);
+    const config = loadConfig({
+      NODE_ENV: "test",
+      APP_DATA_DIR: path.join(root, "data"),
+      AGENT_WORKSPACE_ROOT: path.join(root, "workspaces"),
+      CODEX_HOME: path.join(root, "codex-home"),
+    });
+    const traces: TraceDraft[] = [];
+
+    await expect(
+      new CodexRunner(config).run({
+        agentId: "failure-proof-agent",
+        workspacePath: workspace,
+        prompt: "controlled failure",
+        threadId: null,
+        executionMode: "demo_runtime_failure",
+        onTrace: (trace) => traces.push(trace),
+      }),
+    ).rejects.toThrow("Controlled Runtime proof exited with code 17");
+    expect(traces.every((trace) => trace.source === "runtime")).toBe(true);
+    expect(JSON.stringify(traces)).not.toContain("codex.");
+  });
+
   it("ignores malformed and unknown JSONL without creating trace evidence", () => {
     const traces: TraceDraft[] = [];
     const parsed = {

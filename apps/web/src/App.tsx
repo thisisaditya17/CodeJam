@@ -7,11 +7,6 @@ const workspaceProofPrompt =
 
 const starterPrompts = [
   {
-    content: workspaceProofPrompt,
-    label: "Create and verify a workspace file with the local Runtime proof.",
-    mode: "workspace_proof" as const,
-  },
-  {
     content: "Create a small TypeScript CLI that prints a weather summary from sample JSON.",
     label: "Create a small TypeScript CLI that prints a weather summary from sample JSON.",
     mode: "codex" as const,
@@ -20,6 +15,11 @@ const starterPrompts = [
     content: "Inspect this workspace and explain what you would improve first.",
     label: "Inspect this workspace and explain what you would improve first.",
     mode: "codex" as const,
+  },
+  {
+    content: workspaceProofPrompt,
+    label: "Optional offline proof: create and verify a workspace file without a model.",
+    mode: "workspace_proof" as const,
   },
 ];
 
@@ -105,6 +105,7 @@ function TracePanel({
     selectedRun?.status === "completed" && failedOperations.length > 0;
   const controlledProof =
     selectedRun !== null && selectedRun.executionMode !== "codex";
+  const modelBackedRun = selectedRun?.executionMode === "codex";
 
   return (
     <aside className="trace-panel" aria-label="Agent Black Box trace">
@@ -141,7 +142,7 @@ function TracePanel({
             onClick={onDemoRun}
             disabled={busy}
           >
-            {busy ? <Spinner /> : "Run controlled failure proof"}
+            {busy ? <Spinner /> : "Optional · Run controlled failure proof"}
           </button>
         </div>
       </div>
@@ -155,6 +156,13 @@ function TracePanel({
         <div className="trace-proof-badge" role="status">
           <strong>Controlled Runtime proof</strong>
           <span>No model inference was used for this Run.</span>
+        </div>
+      ) : null}
+
+      {modelBackedRun ? (
+        <div className="trace-model-badge" role="status">
+          <strong>Model-backed Agent Run</strong>
+          <span>Executed through the Codex and ModelArk path.</span>
         </div>
       ) : null}
 
@@ -274,6 +282,8 @@ export default function App() {
     () => agents.find((agent) => agent.id === selectedId) ?? null,
     [agents, selectedId],
   );
+  const modelTaskUnavailable =
+    promptMode === "codex" && system?.arkConfigured === false;
 
   const refreshAgents = useCallback(async () => {
     const { agents: next } = await api.listAgents();
@@ -627,8 +637,8 @@ export default function App() {
             <strong>Agent Launchpad</strong>
             <span>
               {system?.runtimeProvider === "container"
-                ? "Local container · Codex CLI"
-                : "ECS / Docker · Codex CLI"}
+                ? "Disposable container · Codex CLI"
+                : "Process Runtime · Codex CLI"}
             </span>
           </div>
         </div>
@@ -685,7 +695,11 @@ export default function App() {
           <div className="config-banner">
             <span>!</span>
             <div>
-              <strong>Runtime configuration needed</strong>
+              <strong>
+                {!system?.arkConfigured
+                  ? "Model-backed tasks are not configured"
+                  : "Runtime configuration needed"}
+              </strong>
               <p>
                 {!system?.arkConfigured
                   ? "Set ARK_API_KEY and ARK_MODEL for model tasks. The fixed local Runtime proof remains available in the Playground."
@@ -897,14 +911,17 @@ export default function App() {
                 <div className="composer-footer">
                   <span className={promptMode === "workspace_proof" ? "proof-mode" : undefined}>
                     {promptMode === "workspace_proof"
-                      ? "Local Runtime proof selected · real workspace write · zero model tokens"
-                      : "Enter to send · Shift + Enter for newline · " +
-                        (system?.codexSandboxMode ?? "checking sandbox")}
+                      ? "Optional offline proof · real workspace write · zero model tokens"
+                      : system?.arkConfigured
+                        ? "Model-backed Codex Run · Enter to send · " +
+                          (system.codexSandboxMode ?? "checking sandbox")
+                        : "ModelArk is required for real Agent tasks · select the offline proof to test without it"}
                   </span>
                   <button
                     className="send-button"
                     disabled={
                       !prompt.trim() ||
+                      modelTaskUnavailable ||
                       selected.status === "stopped" ||
                       selected.status === "busy" ||
                       (activeRun != null && ["queued", "running"].includes(activeRun.status))

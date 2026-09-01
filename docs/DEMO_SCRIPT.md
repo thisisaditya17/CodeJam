@@ -53,7 +53,7 @@ Expand the file-change details.
 
 ### 1:08-1:28 - Controlled failure and redaction
 
-Select **Run controlled failure proof**.
+Select **Optional · Run controlled failure proof**.
 
 Show:
 

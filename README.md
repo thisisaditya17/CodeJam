@@ -84,6 +84,12 @@ Codex CLI is included in the Runtime image and is not required on the host.
 ModelArk credentials are not required for the credential-free workspace,
 trace, controlled-failure, and linked-recovery demonstration.
 
+For the full submission and reviewer path, configure ModelArk and send an
+ordinary Playground task first. Normal prompts always use the real
+Codex/ModelArk execution path. The offline workspace and controlled-failure
+proofs require explicit UI actions and exist only as deterministic positive and
+negative verification fixtures.
+
 ## Local browser SOP
 
 ### 1. Check the local tools
@@ -111,15 +117,7 @@ Skip this step when already working from the repository root.
 
 ### 3. Start the POC
 
-```bash
-npm run poc
-```
-
-The first run installs Node.js dependencies and builds the Runtime image. The
-script automatically selects Docker, Colima, or Podman. This credential-free
-startup supports the workspace proof, controlled failure, and linked retry.
-
-To enable model-backed Agent tasks, provide credentials and the Responses API
+For real model-backed Agent tasks, provide credentials and the Responses API
 base URL shown for the same ModelArk region:
 
 ```bash
@@ -128,6 +126,19 @@ ARK_MODEL=ep-your-endpoint-id \
 ARK_BASE_URL=https://ark.ap-southeast.bytepluses.com/api/v3 \
 npm run poc
 ```
+
+The first run installs Node.js dependencies and builds the Runtime image. The
+script automatically selects Docker, Colima, or Podman.
+
+If credentials are unavailable, the application can still start in offline
+verification mode:
+
+```bash
+npm run poc
+```
+
+Offline mode supports only the explicitly selected workspace proof,
+controlled failure, and linked retry. It does not accept arbitrary model tasks.
 
 ### 4. Open the browser
 
@@ -153,10 +164,10 @@ The Agent can write files, run commands, and continue the same Codex session in
 later messages. The **Agent Black Box** panel updates while the Run is active
 and keeps previous Runs inspectable.
 
-### Run the controlled failure proof
+### Run the deterministic failure proof
 
 1. Create or select an Agent.
-2. Select **Run controlled failure proof** in the Black Box panel.
+2. Select **Optional · Run controlled failure proof** in the Black Box panel.
 3. Inspect the nine-event failure chain from queueing through the terminal Run.
 4. Confirm the explicit canary is displayed only as `[REDACTED]`.
 
@@ -165,13 +176,13 @@ derived from a real child process that exits with code 17, whether it runs on
 the host-process or disposable-container Runner path. It does not call
 ModelArk, execute an external write, or receive the Ark credential.
 
-### Run without an active model
+### Offline fallback without an active model
 
-Select the green **Create and verify a workspace file with the local Runtime
-proof** prompt in the Playground, then press **Send**. The fixed task remains
+Select **Optional offline proof: create and verify a workspace file without a
+model** in the Playground, then press **Send**. The fixed task remains
 visible as the human message. The disposable Runtime writes and reads back
 `recovery-proof.txt`, verifies the requested content, emits the pinned
-command/file/usage protocol, and completes with zero model tokens. Arbitrary
+Runtime operation/file/metrics protocol, and completes with zero model tokens. Arbitrary
 prompts cannot select this execution mode. It is labelled as Runtime proof
 rather than represented as model inference.
 
@@ -324,6 +335,7 @@ submission artifact.
 
 ```text
 GET  /api/runs/:id/trace
+POST /api/agents/:id/messages   { "content": "arbitrary task", "executionMode": "codex" }
 POST /api/agents/:id/messages   { "content": "fixed task", "executionMode": "workspace_proof" }
 POST /api/agents/:id/demo-runs  { "fixture": "runtime_nonzero" }
 POST /api/agents/:id/demo-runs  { "fixture": "runtime_success" }
@@ -347,11 +359,12 @@ the trace payload.
 
 1. **0:00-0:15** - Explain why a terminal `failed` status is insufficient.
 2. **0:15-0:30** - Show the architecture and truthful evidence boundary.
-3. **0:30-1:15** - Select the local proof task in the Playground, press Send,
-   and show commands, file changes, duration, zero-token usage, and completion.
-4. **1:15-2:05** - Trigger the controlled failure and show the causal chain,
+3. **0:30-1:20** - Run an ordinary model-backed Playground task, then show
+   Codex commands, file changes, usage, duration, and the completed-with-warning
+   evidence when an intermediate operation failed.
+4. **1:20-2:10** - Trigger the controlled failure and show the causal chain,
    exit code, failure boundary, and redacted canary.
-5. **2:05-2:40** - Retry from the persisted workspace and navigate between the
+5. **2:10-2:40** - Retry from the persisted workspace and navigate between the
    immutable failed and successful attempts.
 6. **2:40-3:00** - Show the green validation gate and known limitations.
 

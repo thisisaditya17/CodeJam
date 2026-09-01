@@ -9,6 +9,7 @@ workspaces/
 codex-home/
 coverage/
 output/
+artifacts/
 *.log
 *.tsbuildinfo
 .DS_Store
