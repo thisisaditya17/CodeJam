@@ -1,5 +1,7 @@
 # YouTube upload metadata
 
+Public video: <https://youtu.be/TnMpTMwM82U>
+
 ## Title
 
 Agent Black Box — TikTok TechJam 2026 Track 1 Demo

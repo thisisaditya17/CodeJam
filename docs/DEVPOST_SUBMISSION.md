@@ -15,7 +15,7 @@ Track 1: Agent Launchpad - lightweight Agent middleware
 ## Project links
 
 - Public repository: <https://github.com/thisisaditya17/CodeJam>
-- Demo video: `[ADD_PUBLIC_YOUTUBE_URL]`
+- Demo video: <https://youtu.be/TnMpTMwM82U>
 
 ## Inspiration
 
